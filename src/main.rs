@@ -49,6 +49,13 @@ static MODULES: LazyLock<Mutex<HashMap<String, Module>>> = LazyLock::new(Default
 static FADER_VALUES: LazyLock<Mutex<HashMap<(String, u8), u8>>> = LazyLock::new(Default::default);
 static BRIGHTNESS: AtomicU8 = AtomicU8::new(100);
 static STARTED: OnceLock<()> = OnceLock::new();
+/// Enkodery z akcjami tego pluginu (urządzenie, pozycja) – np. „Głośność” ma własny wskaźnik
+/// na LCD, więc obraz takiego enkodera nigdy nie trafia na ekran pokrętła.
+static OWN_ENCODERS: LazyLock<Mutex<HashSet<(String, u8)>>> = LazyLock::new(Default::default);
+
+fn own_encoder(device: &str, position: u8) -> bool {
+    OWN_ENCODERS.lock().unwrap().contains(&(device.to_string(), position))
+}
 
 /// Wyszukuje nowe moduły co 2 s i uruchamia dla nich wątki czytające.
 fn watcher(tx: UnboundedSender<Msg>) {
@@ -109,7 +116,9 @@ fn read_loop(dev: HidDevice, kind: Kind, id: &str, tx: &UnboundedSender<Msg>) {
         };
         for input in decoder.decode(&buf[..n]) {
             if let Input::EncoderTwist(position, _) = input {
-                overlay::encoder_twist(id, position);
+                if !own_encoder(id, position) {
+                    overlay::encoder_twist(id, position);
+                }
             }
             if let Input::FaderValue(i, v) = input {
                 FADER_VALUES.lock().unwrap().insert((id.to_string(), i), v);
@@ -254,7 +263,7 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
         }
         if event.controller.as_deref() == Some("Encoder") {
             let encoders = kind.layout().2;
-            if encoders == 0 || event.position.is_some_and(|p| p >= encoders) {
+            if encoders == 0 || event.position.is_some_and(|p| p >= encoders || own_encoder(&event.device, p)) {
                 return Ok(());
             }
             let Some(image) = event.image.filter(|image| !image.trim().is_empty()) else {
@@ -423,6 +432,10 @@ async fn apply_gif(
 
 impl openaction::ActionEventHandler for ActionEventHandler {
     async fn will_appear(&self, event: AppearEvent, out: &mut OutboundEventManager) -> EventHandlerResult {
+        if event.payload.controller == "Encoder" {
+            OWN_ENCODERS.lock().unwrap().insert((event.device.clone(), event.payload.coordinates.column));
+            overlay::clear_feedback(&event.device, Some(event.payload.coordinates.column));
+        }
         let settings = event.payload.settings;
         match event.action.as_str() {
             actions::LIGHTING => {
@@ -472,6 +485,9 @@ impl openaction::ActionEventHandler for ActionEventHandler {
     }
 
     async fn will_disappear(&self, event: AppearEvent, out: &mut OutboundEventManager) -> EventHandlerResult {
+        if event.payload.controller == "Encoder" {
+            OWN_ENCODERS.lock().unwrap().remove(&(event.device.clone(), event.payload.coordinates.column));
+        }
         match event.action.as_str() {
             actions::LIGHTING => actions::lighting_disappear(&event.context),
             actions::VOLUME => actions::volume_unregister(&event.context),

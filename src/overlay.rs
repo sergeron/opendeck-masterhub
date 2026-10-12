@@ -45,6 +45,8 @@ struct Source {
     awaiting_feedback: bool,
     ready: Option<Arc<ReadyFeedback>>,
     last_turn: Option<Instant>,
+    /// Kolejność obrotów wszystkich enkoderów (rośnie z każdym obrotem).
+    turn_order: u64,
     log_next_feedback: bool,
 }
 
@@ -61,8 +63,11 @@ impl ReadyFeedback {
     fn prepare(image: FeedbackImage, received_at: Instant) -> Result<Self, PrepareError> {
         let started = Instant::now();
         let model = images::dial_feedback_region(&image.data, hub::DIAL_IMAGE_SIZE, image.row).map_err(PrepareError::Decode)?;
-        if matches!(model, images::DialFeedback::Incomplete) {
-            return Err(PrepareError::IncompleteFeedback);
+        match model {
+            images::DialFeedback::Incomplete => return Err(PrepareError::IncompleteFeedback),
+            // Zwykła ikona z podpisem (akcja bez wsparcia Stream Decka+) – nie przejmuje LCD.
+            images::DialFeedback::Image(_) => return Err(PrepareError::NotBar),
+            images::DialFeedback::Ring(_) => {}
         }
         let jpeg = crate::render::feedback_jpeg(&model.render(hub::DIAL_IMAGE_SIZE)).map_err(PrepareError::Decode)?.into();
         Ok(Self { image, model: Arc::new(model), jpeg, received_at, prepared_at: Instant::now(), prepare_for: started.elapsed() })
@@ -106,8 +111,10 @@ impl Frame {
                 } else {
                     images::dial_feedback(&image.data, hub::DIAL_IMAGE_SIZE).map_err(PrepareError::Decode)?
                 };
-                if matches!(feedback, images::DialFeedback::Incomplete) {
-                    return Err(PrepareError::IncompleteFeedback);
+                match feedback {
+                    images::DialFeedback::Incomplete => return Err(PrepareError::IncompleteFeedback),
+                    images::DialFeedback::Image(_) => return Err(PrepareError::NotBar),
+                    images::DialFeedback::Ring(_) => {}
                 }
                 // Jedna klatka dla potwierdzonej wartości. Dodatkowe klatki animacji
                 // mnożyły ruch HID i pokazywały poziomy pośrednie zamiast celu HA.
@@ -123,6 +130,8 @@ impl Frame {
 enum PrepareError {
     Decode(String),
     IncompleteFeedback,
+    /// Obraz bez rozpoznanego paska – enkoder nie ma feedbacku do pokazania.
+    NotBar,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -213,11 +222,14 @@ struct Registry {
     pending_feedback: HashMap<Encoder, PendingFeedback>,
     feedback_revisions: HashMap<Encoder, (u64, FeedbackImage)>,
     feedback_serial: u64,
+    turn_serial: u64,
     decoder_running: bool,
 }
 
 impl Registry {
     fn feedback(&mut self, encoder: Encoder, image: FeedbackImage, now: Instant) {
+        // Kolejność obrotów enkoderów, które teraz zajmują LCD – nowszy obrót wygrywa.
+        let turns: HashMap<Encoder, u64> = self.sources.iter().map(|(e, s)| (e.clone(), s.turn_order)).collect();
         let source = self.sources.entry(encoder.clone()).or_default();
         source.latest = Some(image.clone());
         if source.interaction_until.is_none_or(|until| now >= until) {
@@ -232,8 +244,14 @@ impl Registry {
         }
         for target in &source.targets {
             let display = self.displays.entry(target.clone()).or_default();
-            // Nowszy obrót na innym enkoderze ma pierwszeństwo na wspólnym LCD.
-            if display.owner.as_ref() == Some(&Owner::Encoder(encoder.clone())) {
+            // Nowszy obrót na innym enkoderze ma pierwszeństwo na wspólnym LCD. Pierwsza odpowiedź
+            // po obrocie enkodera bez wcześniejszego paska zajmuje LCD tylko, gdy jest wolny.
+            let owned = display.owner.as_ref() == Some(&Owner::Encoder(encoder.clone()));
+            let older_owner = match &display.owner {
+                Some(Owner::Encoder(owner)) => turns.get(owner).copied().unwrap_or(0) < source.turn_order,
+                _ => false,
+            };
+            if owned || (source.awaiting_feedback && (!display.active(now) || older_owner)) {
                 let frame = source
                     .ready
                     .as_ref()
@@ -286,8 +304,23 @@ impl Registry {
         }
     }
 
+    /// Wynik dekodera: gotowy pasek albo `None` – zwykła ikona w miejscu dawnego paska
+    /// (np. inny profil) usuwa zapamiętany feedback tego enkodera.
+    fn deliver_if_current(&mut self, encoder: Encoder, revision: u64, ready: Option<Arc<ReadyFeedback>>, now: Instant) {
+        match ready {
+            Some(ready) => self.accept_ready_if_current(encoder, revision, ready, now),
+            None if self.feedback_revisions.get(&encoder).is_some_and(|(current, _)| *current == revision) => {
+                let (device, position) = (encoder.device.clone(), encoder.position);
+                self.clear(&device, Some(position), now);
+            }
+            None => {}
+        }
+    }
+
     fn twist(&mut self, encoder: Encoder, targets: Vec<String>, now: Instant) {
+        self.turn_serial += 1;
         let source = self.sources.entry(encoder.clone()).or_default();
+        source.turn_order = self.turn_serial;
         let new_interaction = source.last_turn.is_none_or(|last| now.saturating_duration_since(last) >= SHOW_FOR);
         source.interaction_until = Some(now + FEEDBACK_WAIT_FOR);
         source.targets = targets;
@@ -295,6 +328,11 @@ impl Registry {
         source.awaiting_feedback = true;
         source.last_turn = Some(now);
         source.log_next_feedback |= new_interaction;
+        if source.latest.is_none() && source.cached.is_none() {
+            // Enkoder nie pokazał jeszcze paska (np. zwykła akcja) – czekamy na odpowiedź,
+            // ale nie zasłaniamy zegara ani innej nakładki.
+            return;
+        }
         for target in &source.targets {
             let display = self.displays.entry(target.clone()).or_default();
             let owner = Owner::Encoder(encoder.clone());
@@ -417,7 +455,7 @@ fn start_feedback_decoder() {
     let shared = SHARED.clone();
     thread::spawn(move || {
         feedback_decoder(&shared, |encoder, revision, ready| {
-            change(|registry, now| registry.accept_ready_if_current(encoder, revision, ready, now));
+            change(|registry, now| registry.deliver_if_current(encoder, revision, ready, now));
         });
     });
 }
@@ -447,7 +485,8 @@ pub fn show_feedback(device: &str, position: Option<u8>, count: u8, image: Strin
 
 /// Konwersja działa niezależnie od zajętego HID. Jedna najnowsza klatka na źródło,
 /// obracany enkoder ma pierwszeństwo przed odświeżeniami pozostałych profili.
-fn feedback_decoder(shared: &Shared, mut deliver: impl FnMut(Encoder, u64, Arc<ReadyFeedback>)) {
+/// `None` = obraz bez paska: enkoder przestaje mieć feedback.
+fn feedback_decoder(shared: &Shared, mut deliver: impl FnMut(Encoder, u64, Option<Arc<ReadyFeedback>>)) {
     loop {
         let job = {
             let mut registry = shared.state.lock().unwrap();
@@ -474,8 +513,9 @@ fn feedback_decoder(shared: &Shared, mut deliver: impl FnMut(Encoder, u64, Arc<R
         };
         let Some((encoder, pending)) = job else { return };
         match ReadyFeedback::prepare(pending.image, pending.received_at) {
-            Ok(ready) => deliver(encoder, pending.revision, Arc::new(ready)),
+            Ok(ready) => deliver(encoder, pending.revision, Some(Arc::new(ready))),
             Err(PrepareError::IncompleteFeedback) => {}
+            Err(PrepareError::NotBar) => deliver(encoder, pending.revision, None),
             Err(PrepareError::Decode(error)) => log::error!("{}[{}]: feedback: {error}", encoder.device, encoder.position),
         }
     }
@@ -836,12 +876,39 @@ mod tests {
     }
 
     #[test]
+    fn turning_an_encoder_without_a_bar_does_not_take_over_the_lcd() {
+        let now = Instant::now();
+        let mut registry = Registry::default();
+        let volume_knob = Encoder::new("knobs", 1);
+        registry.twist(volume_knob.clone(), vec!["lcd".into()], now);
+        assert!(registry.displays.get("lcd").is_none_or(|display| !display.active(now)));
+        assert!(registry.claim_workers(now).is_empty());
+        // Zegar ustawiony wcześniej zostaje tłem, a nie zastępuje go pusta nakładka.
+        let display = registry.displays.entry("lcd".into()).or_default();
+        assert!(display.overlay.is_none() && display.owner.is_none());
+    }
+
+    #[test]
+    fn plain_icon_is_not_feedback() {
+        let icon = Frame::Feedback(FeedbackImage { data: Arc::from(plain_icon_data_url()), row: None });
+        assert!(matches!(icon.jpeg(), Err(PrepareError::NotBar)));
+    }
+
+    fn plain_icon_data_url() -> String {
+        use base64::Engine;
+        let img = RgbImage::from_fn(144, 144, |x, y| image::Rgb([(x % 255) as u8, (y % 255) as u8, 90]));
+        let mut png = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png.into_inner()))
+    }
+
+    #[test]
     fn late_ha_reply_is_accepted_after_the_old_1500ms_window() {
         let now = Instant::now();
         let mut registry = Registry::default();
         let encoder = Encoder::new("rollers", 0);
         registry.twist(encoder.clone(), vec!["lcd".into()], now);
-        registry.displays.get_mut("lcd").unwrap().expire(now + SHOW_FOR);
+        registry.displays.entry("lcd".into()).or_default().expire(now + SHOW_FOR);
         registry.feedback(encoder.clone(), fifty_five(), now + Duration::from_secs(2));
         assert!(queued_feedback(&registry, "lcd") == Some(fifty_five()));
         assert!(registry.displays["lcd"].active(now + Duration::from_secs(2)));
@@ -1242,7 +1309,7 @@ mod tests {
 
     fn decode_pending(shared: &Shared) {
         feedback_decoder(shared, |encoder, revision, ready| {
-            shared.state.lock().unwrap().accept_ready_if_current(encoder, revision, ready, Instant::now());
+            shared.state.lock().unwrap().deliver_if_current(encoder, revision, ready, Instant::now());
             shared.changed.notify_all();
         });
     }
@@ -1288,7 +1355,7 @@ mod tests {
             registry.enqueue_feedback(active.clone(), fifty_five(), Instant::now());
         }
         let mut delivered = Vec::new();
-        feedback_decoder(&shared, |encoder, _, ready| delivered.push((encoder, ready)));
+        feedback_decoder(&shared, |encoder, _, ready| delivered.extend(ready.map(|ready| (encoder, ready))));
         assert_eq!(delivered.len(), 2);
         assert_eq!(delivered[0].0, active);
         assert!(matches!(delivered[0].1.model.as_ref(), images::DialFeedback::Ring(ring) if ring.percent == Some(55)));
