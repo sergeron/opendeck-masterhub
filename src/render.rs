@@ -189,18 +189,11 @@ pub fn jpeg_with_quality(img: &RgbImage, quality: u8) -> Vec<u8> {
     out
 }
 
-/// Standardowy baseline JPEG 4:4:4; zoptymalizowane tablice Huffmana oszczędzają
-/// raporty HID przy tej samej jakości 80. Nie używamy progresywnego JPEG.
+/// JPEG obrazu z enkodera. Ten sam koder co zegar i wskaźnik głośności: dekoder pokrętła
+/// nie radzi sobie z JPEG-iem z jpeg-encoder (zoptymalizowane tablice Huffmana, 4:4:4) –
+/// rysował kilka linii śmieci i zostawiał poprzedni obraz.
 pub fn feedback_jpeg(img: &RgbImage) -> Result<Vec<u8>, String> {
-    let width = u16::try_from(img.width()).map_err(|error| error.to_string())?;
-    let height = u16::try_from(img.height()).map_err(|error| error.to_string())?;
-    let mut bytes = Vec::new();
-    let mut encoder = jpeg_encoder::Encoder::new(&mut bytes, 80);
-    encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_1_1);
-    encoder.set_progressive(false);
-    encoder.set_optimized_huffman_tables(true);
-    encoder.encode(img.as_raw(), width, height, jpeg_encoder::ColorType::Rgb).map_err(|error| error.to_string())?;
-    Ok(bytes)
+    Ok(jpeg_with_quality(img, 80))
 }
 
 #[cfg(test)]
@@ -216,6 +209,5 @@ mod tests {
         assert_eq!(decoded.dimensions(), img.dimensions());
         let error: u64 = decoded.as_raw().iter().zip(img.as_raw()).map(|(a, b)| a.abs_diff(*b) as u64).sum();
         assert!(error as f64 / (img.as_raw().len() as f64) < 3.0, "barwy i tekst muszą przejść bez uszkodzeń");
-        assert!(jpeg.len() < jpeg_with_quality(&img, 80).len(), "optymalizacja musi oszczędzać transfer");
     }
 }
