@@ -11,6 +11,9 @@ mod audio;
 #[path = "../src/render.rs"]
 #[allow(dead_code)]
 mod render;
+#[path = "../src/i18n.rs"]
+#[allow(dead_code)]
+mod i18n;
 #[path = "../src/sensors.rs"]
 #[allow(dead_code)]
 mod sensors;

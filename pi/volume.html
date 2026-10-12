@@ -3,6 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<link rel="stylesheet" href="pi.css" />
+		<script src="i18n.js"></script>
 		<script src="common.js"></script>
 		<script>
 			function onFormChange() {
@@ -14,32 +15,32 @@
 	</head>
 	<body>
 		<div class="row">
-			<label for="target">Steruje</label>
+			<label for="target" data-en="Controls">Steruje</label>
 			<select id="target" data-key="target">
-				<option value="master">Głośność systemu</option>
-				<option value="mic">Mikrofon</option>
-				<option value="focused">Aktywne okno</option>
-				<option value="apps">Wybrane aplikacje</option>
+				<option value="master" data-en="System volume">Głośność systemu</option>
+				<option value="mic" data-en="Microphone">Mikrofon</option>
+				<option value="focused" data-en="Focused window">Aktywne okno</option>
+				<option value="apps" data-en="Chosen apps">Wybrane aplikacje</option>
 			</select>
 		</div>
 		<div class="row" id="apps-row">
-			<label for="apps">Aplikacje</label>
+			<label for="apps" data-en="Apps">Aplikacje</label>
 			<input id="apps" data-key="apps" type="text" placeholder="spotify.exe, discord.exe" />
 		</div>
-		<p class="hint" id="apps-hint">Nazwy procesów oddzielone przecinkami (jak w Menedżerze zadań → Szczegóły).</p>
+		<p class="hint" id="apps-hint" data-en="Process names separated by commas (as in Task Manager → Details).">Nazwy procesów oddzielone przecinkami (jak w Menedżerze zadań → Szczegóły).</p>
 		<div class="row">
-			<label for="step">Krok</label>
+			<label for="step" data-en="Step">Krok</label>
 			<input id="step" data-key="step" type="range" min="1" max="10" value="2" />
 			<span class="value" id="step-value"></span>
 		</div>
 		<div class="row">
-			<label for="ledLevel">Dioda suwaka</label>
-			<label><input id="ledLevel" data-key="ledLevel" type="checkbox" checked /> pokazuje poziom</label>
+			<label for="ledLevel" data-en="Fader LED">Dioda suwaka</label>
+			<label><input id="ledLevel" data-key="ledLevel" type="checkbox" checked /> <span data-en="shows the level">pokazuje poziom</span></label>
 		</div>
 		<div class="row">
-			<label for="dialOverlay">Ekran pokrętła</label>
-			<label><input id="dialOverlay" data-key="dialOverlay" type="checkbox" checked /> pokazuje poziom przy zmianie</label>
+			<label for="dialOverlay" data-en="Dial screen">Ekran pokrętła</label>
+			<label><input id="dialOverlay" data-key="dialOverlay" type="checkbox" checked /> <span data-en="shows the level while changing">pokazuje poziom przy zmianie</span></label>
 		</div>
-		<p class="hint">Na faderze pozycja suwaka = głośność. Na gałkach, rolkach i pokrętle obrót zmienia o „Krok”, wciśnięcie wycisza.</p>
+		<p class="hint" data-en="On the fader the slider position is the volume. On knobs, rollers and the dial rotation changes it by “Step”, pressing mutes.">Na faderze pozycja suwaka = głośność. Na gałkach, rolkach i pokrętle obrót zmienia o „Krok”, wciśnięcie wycisza.</p>
 	</body>
 </html>

@@ -3,6 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<link rel="stylesheet" href="pi.css" />
+		<script src="i18n.js"></script>
 		<script>
 			// Ustawienia akcji: { press, entries: { "<moduł>:<dioda>": { mode, color, brightness, speed } } }
 			// moduł: all | base | knob | fader, dioda: 0 = cały moduł, 1.. = konkretna.
@@ -44,7 +45,12 @@
 				return { entry: DEFAULT, from: null };
 			}
 
-			const labels = { "all:0": "wszystkich modułów", "base:0": "bazy", "knob:0": "całego modułu gałek", "fader:0": "całego fadera" };
+			const labels = {
+				"all:0": ["wszystkich modułów", "all modules"],
+				"base:0": ["bazy", "the base"],
+				"knob:0": ["całego modułu gałek", "the whole knob module"],
+				"fader:0": ["całego fadera", "the whole fader"],
+			};
 
 			function showSelected() {
 				const key = selectedKey();
@@ -57,10 +63,10 @@
 				$("inherit").textContent = own
 					? ""
 					: from === "live"
-						? "Aktualny stan diody – zmiana zapisze ustawienie dla tej pozycji."
+						? t("Aktualny stan diody – zmiana zapisze ustawienie dla tej pozycji.", "Current LED state – a change saves a setting for this position.")
 						: from
-							? "Dziedziczy ustawienia " + labels[from] + "."
-							: "Brak ustawień – zmiana zapisze nowe.";
+							? t("Dziedziczy ustawienia " + labels[from][0] + ".", "Inherits the settings of " + labels[from][1] + ".")
+							: t("Brak ustawień – zmiana zapisze nowe.", "No settings – a change saves new ones.");
 				$("reset").classList.toggle("hidden", !own);
 				refreshVisibility();
 			}
@@ -122,18 +128,22 @@
 				showSelected();
 
 				socket = new WebSocket("ws://localhost:" + port);
+				I18N.attach(socket, uuid);
 				socket.onopen = () => {
 					socket.send(JSON.stringify({ event: registerEvent, uuid }));
 					send();
 				};
 				socket.onmessage = (msg) => {
 					const data = JSON.parse(msg.data);
+					if (data.event === "sendToPropertyInspector" && I18N.handle(data.payload)) return;
 					if (data.event === "sendToPropertyInspector" && data.payload && data.payload.state) {
 						live = data.payload.state;
 						showSelected();
 					}
 				};
 			}
+
+			I18N.onChange(() => showSelected());
 
 			window.addEventListener("DOMContentLoaded", () => {
 				$("target").addEventListener("change", showSelected);
@@ -150,18 +160,18 @@
 	</head>
 	<body>
 		<div class="row">
-			<label for="target">Moduł</label>
+			<label for="target" data-en="Module">Moduł</label>
 			<select id="target">
-				<option value="all">Wszystkie</option>
-				<option value="base">Baza</option>
-				<option value="knob">3 gałki</option>
+				<option value="all" data-en="All">Wszystkie</option>
+				<option value="base" data-en="Base">Baza</option>
+				<option value="knob" data-en="3 knobs">3 gałki</option>
 				<option value="fader">Fader</option>
 			</select>
 		</div>
 		<div class="row" id="led-row">
-			<label for="led">Dioda</label>
+			<label for="led" data-en="LED">Dioda</label>
 			<select id="led">
-				<option value="0">Wszystkie</option>
+				<option value="0" data-en="All">Wszystkie</option>
 				<option value="1">1</option>
 				<option value="2">2</option>
 				<option value="3">3</option>
@@ -171,45 +181,45 @@
 		</div>
 		<p class="hint" id="inherit"></p>
 		<div class="row">
-			<label for="mode">Efekt</label>
+			<label for="mode" data-en="Effect">Efekt</label>
 			<select id="mode">
-				<option value="1">Stały kolor</option>
-				<option value="2">Oddychanie</option>
-				<option value="3">Stroboskop</option>
+				<option value="1" data-en="Static colour">Stały kolor</option>
+				<option value="2" data-en="Breathing">Oddychanie</option>
+				<option value="3" data-en="Strobe">Stroboskop</option>
 				<option value="4">Spring</option>
-				<option value="5">Cykl kolorów</option>
-				<option value="6">Losowy</option>
-				<option value="7">Fala</option>
-				<option value="8">Woda</option>
-				<option value="9">Tęcza</option>
-				<option value="0">Wyłączone</option>
+				<option value="5" data-en="Colour cycle">Cykl kolorów</option>
+				<option value="6" data-en="Random">Losowy</option>
+				<option value="7" data-en="Wave">Fala</option>
+				<option value="8" data-en="Water">Woda</option>
+				<option value="9" data-en="Rainbow">Tęcza</option>
+				<option value="0" data-en="Off">Wyłączone</option>
 			</select>
 		</div>
 		<div class="row" id="color-row">
-			<label for="color">Kolor</label>
+			<label for="color" data-en="Colour">Kolor</label>
 			<input id="color" type="color" value="#743adf" />
 		</div>
 		<div class="row">
-			<label for="brightness">Jasność</label>
+			<label for="brightness" data-en="Brightness">Jasność</label>
 			<input id="brightness" type="range" min="0" max="100" value="100" />
 			<span class="value" id="brightness-value"></span>
 		</div>
 		<div class="row" id="speed-row">
-			<label for="speed">Prędkość</label>
+			<label for="speed" data-en="Speed">Prędkość</label>
 			<input id="speed" type="range" min="0" max="100" value="50" />
 			<span class="value" id="speed-value"></span>
 		</div>
 		<div class="row">
 			<label></label>
-			<button id="reset" class="hidden" type="button">Przywróć wspólne</button>
+			<button id="reset" class="hidden" type="button" data-en="Restore shared">Przywróć wspólne</button>
 		</div>
 		<div class="row">
-			<label for="press">Wciśnięcie</label>
+			<label for="press" data-en="Press">Wciśnięcie</label>
 			<select id="press">
-				<option value="toggle">Włącz / wyłącz</option>
-				<option value="apply">Zastosuj ponownie</option>
+				<option value="toggle" data-en="Turn on / off">Włącz / wyłącz</option>
+				<option value="apply" data-en="Apply again">Zastosuj ponownie</option>
 			</select>
 		</div>
-		<p class="hint">Ustawienia działają od razu i po każdym załadowaniu profilu.</p>
+		<p class="hint" data-en="Settings apply immediately and every time the profile loads.">Ustawienia działają od razu i po każdym załadowaniu profilu.</p>
 	</body>
 </html>

@@ -10,6 +10,7 @@ mod gif;
 #[cfg(target_os = "linux")]
 mod host;
 mod hub;
+mod i18n;
 mod images;
 mod input;
 mod overlay;
@@ -209,13 +210,39 @@ fn with_writer(id: &str, f: impl FnOnce(&HidDevice) -> Result<(), hidapi::HidErr
 struct GlobalEventHandler;
 
 impl openaction::GlobalEventHandler for GlobalEventHandler {
-    async fn plugin_ready(&self, _outbound: &mut OutboundEventManager) -> EventHandlerResult {
+    async fn plugin_ready(&self, outbound: &mut OutboundEventManager) -> EventHandlerResult {
+        // Ustawienie języka przychodzi w odpowiedzi (did_receive_global_settings).
+        outbound.get_global_settings().await?;
         if STARTED.set(()).is_ok() {
             let (tx, rx) = unbounded_channel();
             tokio::spawn(dispatcher(rx));
             tokio::spawn(volume_poller());
             thread::spawn(move || watcher(tx));
             log::info!("Plugin MasterHUB {} gotowy", env!("CARGO_PKG_VERSION"));
+        }
+        Ok(())
+    }
+
+    async fn did_receive_global_settings(
+        &self,
+        event: DidReceiveGlobalSettingsEvent,
+        out: &mut OutboundEventManager,
+    ) -> EventHandlerResult {
+        let setting = event.payload.settings["language"].as_str().unwrap_or("auto").to_string();
+        let changed = i18n::set(&setting);
+        log::info!("Język: {} (ustawienie: {setting})", i18n::code());
+        if changed {
+            // Napisy rysowane przez plugin w nowym języku.
+            actions::clock_reset();
+            sync_volume(out, true).await?;
+            if actions::sensors_active() {
+                sync_sensors(out, true).await?;
+            }
+        }
+        // Otwarte panele ustawień przełączają język od razu.
+        let open: Vec<String> = OPEN_PANELS.lock().unwrap().iter().cloned().collect();
+        for context in open {
+            out.send_to_property_inspector(context, language_json()).await?;
         }
         Ok(())
     }
@@ -289,6 +316,14 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
 }
 
 struct ActionEventHandler;
+
+/// Otwarte panele ustawień (konteksty akcji) – dostają zmianę języka od razu.
+static OPEN_PANELS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+
+/// Język dla panelu ustawień: `{ lang: "pl" | "en", langSetting: "auto" | "pl" | "en" }`.
+fn language_json() -> serde_json::Value {
+    serde_json::json!({ "lang": i18n::code(), "langSetting": i18n::setting() })
+}
 
 /// Uruchamia blokującą operację (HID, Core Audio) poza wątkami tokio.
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, anyhow::Error> {
@@ -414,6 +449,8 @@ impl openaction::ActionEventHandler for ActionEventHandler {
         event: PropertyInspectorAppearEvent,
         out: &mut OutboundEventManager,
     ) -> EventHandlerResult {
+        OPEN_PANELS.lock().unwrap().insert(event.context.clone());
+        out.send_to_property_inspector(event.context.clone(), language_json()).await?;
         match event.action.as_str() {
             actions::LIGHTING => out.send_to_property_inspector(event.context, actions::led_state_json()).await?,
             actions::SENSOR => {
@@ -422,6 +459,15 @@ impl openaction::ActionEventHandler for ActionEventHandler {
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    async fn property_inspector_did_disappear(
+        &self,
+        event: PropertyInspectorAppearEvent,
+        _out: &mut OutboundEventManager,
+    ) -> EventHandlerResult {
+        OPEN_PANELS.lock().unwrap().remove(&event.context);
         Ok(())
     }
 
@@ -538,6 +584,7 @@ fn init_logging() {
 #[tokio::main]
 async fn main() {
     init_logging();
+    i18n::init();
 
     if let Err(e) = init_plugin(GlobalEventHandler, ActionEventHandler).await {
         log::error!("Błąd połączenia z OpenDeckiem: {e}");

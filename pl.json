@@ -1,0 +1,24 @@
+{
+  "Name": "Cooler Master MasterHUB",
+  "Description": "Nieoficjalna obsługa modułów Cooler Master MasterHUB (15xKey, 3xKnob, 2xRoller, 1xDial, 5xFader) z akcjami podświetlenia, głośności, animacji GIF, czujników i zegara",
+  "io.github.opendeck-masterhub.lighting": {
+    "Name": "Podświetlenie",
+    "Tooltip": "Kolor, efekt i jasność diod bazy, gałek i fadera"
+  },
+  "io.github.opendeck-masterhub.volume": {
+    "Name": "Głośność",
+    "Tooltip": "Fader: pozycja = głośność. Gałki/rolki/pokrętło: obrót zmienia, wciśnięcie wycisza"
+  },
+  "io.github.opendeck-masterhub.gif": {
+    "Name": "Animacja GIF",
+    "Tooltip": "Animowany GIF na klawiszu 15xKey lub ekranie pokrętła"
+  },
+  "io.github.opendeck-masterhub.sensor": {
+    "Name": "Czujnik",
+    "Tooltip": "Temperatura, obciążenie, moc, wentylatory… z LibreHardwareMonitor, FPS z RivaTunera"
+  },
+  "io.github.opendeck-masterhub.clock": {
+    "Name": "Zegar",
+    "Tooltip": "Godzina i data – np. na okrągłym ekranie pokrętła; wciśnięcie może otworzyć program, wysłać skrót albo wyciszyć"
+  }
+}

@@ -1,6 +1,6 @@
 [package]
 name = "opendeck-masterhub"
-version = "0.6.4"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.89"
 
@@ -26,6 +26,7 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",
+    "Win32_Globalization",
     "Win32_System_Com",
     "Win32_System_Memory",
     "Win32_System_SystemInformation",

@@ -7,7 +7,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use crate::{FADER_VALUES, MODULES, audio, hub, hub::Kind, with_writer};
+use crate::{FADER_VALUES, MODULES, audio, hub, hub::Kind, i18n::tr, with_writer};
 
 pub const LIGHTING: &str = "io.github.opendeck-masterhub.lighting";
 pub const VOLUME: &str = "io.github.opendeck-masterhub.volume";
@@ -83,16 +83,26 @@ pub fn clock_unregister(context: &str) -> Option<String> {
 /// Bieżąca godzina ("14:05" albo "14:05:09") i data ("czw, 9 paź").
 pub fn clock_text(seconds: bool) -> (String, String) {
     use chrono::{Datelike, Local, Timelike};
-    const DAYS: [&str; 7] = ["pon", "wt", "śr", "czw", "pt", "sob", "niedz"];
-    const MONTHS: [&str; 12] = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+    const DAYS_PL: [&str; 7] = ["pon", "wt", "śr", "czw", "pt", "sob", "niedz"];
+    const MONTHS_PL: [&str; 12] = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+    const DAYS_EN: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const MONTHS_EN: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let (days, months) = if crate::i18n::polish() { (DAYS_PL, MONTHS_PL) } else { (DAYS_EN, MONTHS_EN) };
     let now = Local::now();
-    let date = format!("{}, {} {}", DAYS[now.weekday().num_days_from_monday() as usize], now.day(), MONTHS[now.month0() as usize]);
+    let date = format!("{}, {} {}", days[now.weekday().num_days_from_monday() as usize], now.day(), months[now.month0() as usize]);
     let time = if seconds {
         format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second())
     } else {
         format!("{:02}:{:02}", now.hour(), now.minute())
     };
     (time, date)
+}
+
+/// Wymusza ponowne narysowanie zegarów (np. po zmianie języka).
+pub fn clock_reset() {
+    for c in CLOCK_INSTANCES.lock().unwrap().values_mut() {
+        c.last.clear();
+    }
 }
 
 /// Nowe obrazy zegarów (kontekst, data URL) – tylko gdy zmienił się wyświetlany tekst.
@@ -196,7 +206,7 @@ pub fn sensor_updates(force: bool) -> Vec<(String, Option<String>, Option<&'stat
     for (context, (s, last_title, last_icon)) in instances.iter_mut() {
         let (value_text, kind, warn) = match &all {
             Err(_) => ("LHM?".to_string(), "", false),
-            Ok(_) if s.sensor.is_empty() => ("wybierz".to_string(), "", false),
+            Ok(_) if s.sensor.is_empty() => (tr("wybierz", "select").to_string(), "", false),
             Ok(_) if crate::sensors::source_error(&s.sensor).is_some() => ("LHM?".to_string(), "", false),
             Ok(map) => match map.get(&s.sensor) {
                 Some(sensor) => match sensor.value {
@@ -207,7 +217,7 @@ pub fn sensor_updates(force: bool) -> Vec<(String, Option<String>, Option<&'stat
                     ),
                     None => ("—".to_string(), sensor.kind.as_str(), false),
                 },
-                None => ("brak".to_string(), "", false),
+                None => (tr("brak", "n/a").to_string(), "", false),
             },
         };
         let title = if s.label.trim().is_empty() { value_text } else { format!("{}\n{value_text}", s.label.trim()) };
@@ -607,13 +617,13 @@ impl Volume {
             s.chars().take(1).flat_map(char::to_uppercase).chain(s.chars().skip(1)).collect()
         };
         match self.target.as_str() {
-            "mic" => "Mikrofon".into(),
+            "mic" => tr("Mikrofon", "Microphone").into(),
             "focused" => audio::focused_app()
                 .map(|a| capitalize(a.trim_end_matches(".exe")))
-                .unwrap_or_else(|| "Aktywne okno".into()),
+                .unwrap_or_else(|| tr("Aktywne okno", "Focused app").into()),
             "apps" => {
                 let mut apps = self.apps.split(',').map(|a| a.trim().trim_end_matches(".exe")).filter(|a| !a.is_empty());
-                let mut name = capitalize(apps.next().unwrap_or("Aplikacje"));
+                let mut name = capitalize(apps.next().unwrap_or(tr("Aplikacje", "Apps")));
                 if apps.next().is_some() {
                     name.push_str(" +");
                 }
@@ -640,7 +650,7 @@ impl Volume {
 
 /// Tytuł akcji po zmianie głośności, np. "45%" albo "Wycisz.".
 fn volume_title(state: audio::State) -> String {
-    if state.muted { "Wycisz.".into() } else { format!("{:.0}%", state.level * 100.0) }
+    if state.muted { tr("Wycisz.", "Muted").into() } else { format!("{:.0}%", state.level * 100.0) }
 }
 
 /// Widoczne akcje głośności: kontekst -> (cel, ostatnio wysłany tytuł).

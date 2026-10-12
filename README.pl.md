@@ -36,32 +36,31 @@ Akcje w kategorii **MasterHUB**:
   Na Windows także **FPS i czas klatki aktywnego okna** z RivaTuner Statistics Server
   (np. razem z MSI Afterburnerem) – działa bez LibreHardwareMonitor.
 
-## Feedback enkodera LCD (0.6.4)
+## Obraz z enkoderów na ekranie pokrętła
 
-Źródłem feedbacku może być pokrętło LCD, każdy z trzech knobów lub oba rollery.
-Pamięć jest osobna dla urządzenia i pozycji. Ostatnio obracany enkoder wybiera źródło
-wspólnego ekranu; odświeżenia profilu bez obrotu zachowują zegar.
+Pluginy ze wsparciem Stream Decka+, które rysują pasek na wyświetlaczu nad pokrętłem (np. jasność
+światła z [Home Assistanta](https://github.com/cgiesche/streamdeck-homeassistant), układ **`$B1`**),
+mogą pokazywać go na okrągłym ekranie pokrętła MasterHUB-a, gdy kręcisz tym enkoderem – samym
+pokrętłem, dowolną gałką albo rolką. Pokazywane są tylko rozpoznane układy z paskiem; enkodery
+ze zwykłą ikoną i enkodery z akcją „Głośność” tego pluginu (ma własny wskaźnik) nigdy nie
+przejmują ekranu, więc zegar zostaje. Standardowe wartości **0–100%** są rysowane ostro
+w **240×240**; liczba pochodzi z drugiego pluginu, obrót jej nie przewiduje. Po 1,5 s bez zmian
+ekran wraca do zegara / obrazu klawisza.
 
-Standardowe procenty **0–100% z `$B1`** są rozpoznawane z oryginalnego napisu
-i rysowane lokalnie w **240×240**, tą samą czcionką systemową co głośność.
-Liczba pochodzi z potwierdzonego obrazu HA, niezależnie od długości paska.
-Niepewne i niestandardowe napisy zachowują oryginalny obraz. Tytuł jest zachowany
-w rozmiarze oryginalnych pikseli, bez powiększania. **Obrót nie przewiduje wartości.**
+Dla Home Assistanta: zostaw **±5%**, **`$B1`** i **Tick bucket size = 50 ms**.
+[Instrukcja konfiguracji i pomiarów](docs/ha-lcd-feedback.md) opisuje zaokrąglenia HA oraz
+pomiary w `masterhub.log`.
 
-Osobny dekoder przygotowuje najnowszy JPEG dla każdego enkodera podczas pracy HID.
-Identyczny widok wykorzystuje gotowy obraz. Worker LCD nie czeka już dodatkowych
-8 ms, a geometria pierścienia jest w pamięci. Zoptymalizowany baseline JPEG 4:4:4
-z jakością 80 zmniejsza ruch USB. Głośność i zegar zachowują swój dotychczasowy
-encoder JPEG. Dodano `jpeg-encoder` w czystym Rust, bez bibliotek systemowych.
+## Języki
 
-Przypisz HA do dowolnego enkodera, zachowaj **±5%**, **`$B1`** i **Tick bucket size
-= 50 ms**; **Zegar** zostaje na klawiszu LCD. Liczba na ekranie jest tą otrzymaną
-z HA. [Instrukcja konfiguracji i pomiarów](docs/ha-lcd-feedback.md) opisuje zaokrąglenia
-HA oraz nowe pomiary odbioru feedbacku, przygotowania, blokady writera i transferu
-HID w `masterhub.log`.
+Plugin mówi **po polsku i po angielsku**: panele ustawień, napisy rysowane na ekranach
+(nakładka głośności, data na zegarze…) i komunikaty czujników. Język zależy od zainstalowanej
+paczki i można go zmienić w ustawieniach dowolnej akcji (**Język / Language**: Auto / Polski /
+English – wspólny dla wszystkich akcji). Wydania zawierają dwie paczki, które różnią się tylko
+nazwami akcji na liście OpenDecka (OpenDeck czyta je z manifestu i nie ma polskiej wersji):
 
-Szybsze renderowanie lokalne nie usuwa oczekiwania na potwierdzoną odpowiedź HA.
-Czas USB i zachowanie fizycznego LCD wymagają sprawdzenia na urządzeniu.
+- `io.github.opendeck-masterhub-pl.streamDeckPlugin` – polskie nazwy,
+- `io.github.opendeck-masterhub-en.streamDeckPlugin` – angielskie nazwy.
 
 ## Instalacja
 
@@ -70,8 +69,8 @@ Wspólne dla wszystkich systemów:
 1. Zainstaluj OpenDecka (2.14 lub nowszy).
 2. **Zamknij oficjalną aplikację Cooler Master MasterHUB**, jeśli działa – oba programy
    naraz walczyłyby o moduły.
-3. Pobierz `io.github.opendeck-masterhub.streamDeckPlugin` z [Releases](../../releases)
-   i w OpenDecku wybierz **Plugins → Install from file**.
+3. Pobierz `io.github.opendeck-masterhub-pl.streamDeckPlugin` (albo `-en`) z
+   [Releases](../../releases) i w OpenDecku wybierz **Plugins → Install from file**.
 4. Moduły pojawią się na liście urządzeń OpenDecka w ciągu kilku sekund.
 
 ### Windows (10 / 11)
@@ -122,32 +121,29 @@ jest obsługiwany – plugin uruchamia programy systemowe przez `flatpak-spawn -
 
 ## Budowanie
 
-Wymaga [Rusta](https://rustup.rs) (1.89+).
+Wymaga [Rusta](https://rustup.rs) (1.89+) i Pythona 3 do pakowania. Komentarze w kodzie są po polsku.
 
 | System | Polecenie | Wynik |
 |---|---|---|
-| Windows | `cargo build --release`, potem `install.ps1` kopiuje go do OpenDecka (zamknij najpierw OpenDecka) | `target/release/opendeck-masterhub.exe` |
-| Windows x64 z Linuksa | `sh build-windows.sh` | `dist/bin/opendeck-masterhub.exe` |
+| Windows | `cargo build --release` | `target/release/opendeck-masterhub.exe` |
 | Linux / WSL | `sh build-linux.sh` | `dist/bin/opendeck-masterhub-linux` |
 | macOS | `sh macos/build.sh` (plik uniwersalny) | `dist/bin/opendeck-masterhub-mac` |
 
-Build Windows na Debianie / Ubuntu wymaga `gcc-mingw-w64-x86-64` oraz
-`rustup target add x86_64-pc-windows-gnu`. Skrypty Linux i Windows domyślnie trzymają
-pliki kompilacji w `$HOME/.cache/opendeck-masterhub-target`; można ustawić
-`CARGO_TARGET_DIR`.
+`python package.py` pakuje dostępne pliki do `dist/io.github.opendeck-masterhub-{en,pl}.streamDeckPlugin`
+(`--lang en` / `--lang pl` – tylko jedna). Na Windows `install.ps1` buduje i instaluje od razu
+do OpenDecka (zamknij najpierw OpenDecka); nazwy akcji według języka Windows, `-Lang en` /
+`-Lang pl` to zmienia. Inne systemy: `python3 package.py --install --lang pl`.
 
-Przed budowaniem uruchom `cargo test --locked`. Podgląd feedbacku bez urządzenia:
-
-```sh
-mkdir -p dist
-cargo run --locked --release --example feedback_preview -- \
-  tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png
-```
-
-`python3 package.py` pakuje dostępne pliki do `dist/io.github.opendeck-masterhub.streamDeckPlugin`.
-Windows EXE jest wybierany najpierw z `dist/bin`, a następnie z `target/release`
-(natywny build na Windowsie).
+Build dla Windows na Linuksie (Debian / Ubuntu): zainstaluj `gcc-mingw-w64-x86-64`, uruchom
+`rustup target add x86_64-pc-windows-gnu` i `sh build-windows.sh` – wynik trafia do
+`dist/bin/opendeck-masterhub.exe`, który `package.py` bierze przed `target/release`.
+Przed budowaniem uruchom `cargo test --locked`. Podgląd obrazu z enkodera bez urządzenia:
+`cargo run --release --example feedback_preview -- tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png`.
 GitHub Actions buduje wszystkie trzy systemy przy każdym pushu; tag `v*` publikuje wydanie.
+
+Tłumaczenia: teksty paneli są w HTML (po polsku), angielskie w atrybutach `data-en`
+(`pi/i18n.js`); napisy rysowane przez plugin – `i18n::tr("polski", "English")`; polskie nazwy
+akcji – `pl.json` (format tłumaczeń Stream Decka).
 
 W `examples/` są małe narzędzia testowe sprzętu i grafiki (`cargo run --example …`).
 

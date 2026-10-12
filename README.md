@@ -20,49 +20,48 @@ needed. Not affiliated with or endorsed by Cooler Master.
 Every module is a separate OpenDeck device with its own profiles, so re-plugging modules
 doesn't break assignments.
 
-Actions in the **MasterHUB** category (their settings panels are in Polish):
+Actions in the **MasterHUB** category:
 
-- **Podświetlenie (Lighting)** – colour, effect, brightness and speed of the LEDs on the base,
+- **Lighting** – colour, effect, brightness and speed of the LEDs on the base,
   knobs and fader (each LED separately).
-- **Głośność (Volume)** – system, microphone, the focused window's app or chosen apps;
+- **Volume** – system, microphone, the focused window's app or chosen apps;
   absolute on the fader, stepped on knobs / rollers / the dial, press to mute. While changing
   it briefly shows a round level gauge on the dial screen.
-- **Animacja GIF (GIF animation)** – on a key, on the dial screen, stretched across the whole
+- **GIF animation** – on a key, on the dial screen, stretched across the whole
   15xKey module or the same GIF on every key.
-- **Zegar (Clock)** – time and date, e.g. on the dial's round screen. Pressing it can open
+- **Clock** – time and date, e.g. on the dial's round screen. Pressing it can open
   a file / program / URL, send a keyboard shortcut or mute the system / microphone / focused app.
-- **Czujnik (Sensor)** – temperatures, load, power, fans etc. from
+- **Sensor** – temperatures, load, power, fans etc. from
   [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
   On Windows also **FPS and frame time of the focused window** from RivaTuner Statistics Server
   (e.g. bundled with MSI Afterburner) – works without LibreHardwareMonitor.
 
-## LCD encoder feedback (0.6.4)
+## Encoder feedback on the dial screen
 
-The LCD dial, all three knobs and both rollers can provide feedback on the connected
-LCDs. Feedback memory is separate for each device and encoder position. The latest
-physically rotated encoder owns the shared screen; profile refreshes keep the clock.
+Stream Deck+ plugins that draw a bar on the touch strip above an encoder (e.g. the
+[Home Assistant](https://github.com/cgiesche/streamdeck-homeassistant) light brightness, layout
+**`$B1`**) can show it on the MasterHUB dial's round screen while you turn that encoder – on the
+dial itself, any knob or any roller. Only recognized bar layouts are shown; encoders with plain
+icons and encoders running this plugin's own "Volume" action (which has its own gauge) never take
+over the screen, so the clock stays put. Standard **0–100%** values are redrawn sharply at
+**240×240**; the number is the one confirmed by the other plugin, turning never predicts it.
+After 1.5 s without changes the screen returns to the clock / key image.
 
-Standard **`$B1`** percentages **0–100%** are recognized from the original value text
-and drawn locally at **240×240**, using the same system font as the volume gauge.
-The number comes from the confirmed HA image, independently of the bar length.
-Uncertain or custom text keeps its original image. The original title is preserved
-at its pixel size; it is no longer enlarged. **Rotation never predicts a new value.**
+For Home Assistant: keep **±5%**, **`$B1`** and **Tick bucket size = 50 ms**. The
+[configuration and timing guide](docs/ha-lcd-feedback.md) explains HA's percentage rounding and
+the `masterhub.log` measurements.
 
-A separate decoder prepares and caches the latest JPEG per encoder while the LCD
-writer may be busy. Matching visual feedback reuses the prepared image. The LCD
-worker no longer waits the extra 8 ms before uploading it, and ring geometry is
-cached. Optimized baseline JPEG 4:4:4 at quality 80 reduces USB traffic; volume
-and clock images keep their existing encoder. The new encoder is the pure Rust
-`jpeg-encoder` crate, with no extra system libraries.
+## Languages
 
-Assign the HA action to any dial, knob or roller encoder, keep **±5%**, **`$B1`** and
-**Tick bucket size = 50 ms**, and put **Zegar (Clock)** on the LCD key. The screen
-shows the percentage actually sent by HA. The [configuration and timing guide](docs/ha-lcd-feedback.md)
-explains raw percentage rounding and the new `masterhub.log` measurements for
-incoming feedback, preparation, writer lock and HID transfer.
+The plugin speaks **English and Polish**: settings panels, texts drawn on the screens
+(volume overlay, clock date…) and sensor messages. The language follows the package you
+install and can be changed in any action's settings (**Język / Language**: Auto / Polski /
+English – shared by all actions). Releases contain two packages that differ only in the action
+names shown in OpenDeck's action list (OpenDeck reads them from the manifest and has no Polish
+UI of its own):
 
-A faster local renderer cannot remove the wait for a confirmed HA response.
-USB and physical LCD timing still need a hardware check.
+- `io.github.opendeck-masterhub-en.streamDeckPlugin` – English names,
+- `io.github.opendeck-masterhub-pl.streamDeckPlugin` – Polish names.
 
 ## Installation
 
@@ -71,7 +70,7 @@ All systems:
 1. Install OpenDeck (2.14 or newer).
 2. **Close the official Cooler Master MasterHUB app** if it's running – both would fight over
    the modules.
-3. Download `io.github.opendeck-masterhub.streamDeckPlugin` from
+3. Download `io.github.opendeck-masterhub-en.streamDeckPlugin` (or `-pl`) from
    [Releases](../../releases) and in OpenDeck choose **Plugins → Install from file**.
 4. The modules show up in OpenDeck's device list within a few seconds.
 
@@ -122,34 +121,30 @@ is supported – the plugin runs host programs through `flatpak-spawn --host`.
 
 ## Building
 
-Requires [Rust](https://rustup.rs) (1.89+). Code comments are in Polish.
+Requires [Rust](https://rustup.rs) (1.89+) and Python 3 for packaging. Code comments are in Polish.
 
 | System | Command | Output |
 |---|---|---|
-| Windows | `cargo build --release`, then `install.ps1` copies it into OpenDeck (close OpenDeck first) | `target/release/opendeck-masterhub.exe` |
-| Windows x64 built on Linux | `sh build-windows.sh` | `dist/bin/opendeck-masterhub.exe` |
+| Windows | `cargo build --release` | `target/release/opendeck-masterhub.exe` |
 | Linux / WSL | `sh build-linux.sh` | `dist/bin/opendeck-masterhub-linux` |
 | macOS | `sh macos/build.sh` (universal binary) | `dist/bin/opendeck-masterhub-mac` |
 
-For the Windows cross-build on Debian / Ubuntu, install
-`gcc-mingw-w64-x86-64` and add the Rust target with
-`rustup target add x86_64-pc-windows-gnu`. The Linux and Windows scripts keep build
-files in `$HOME/.cache/opendeck-masterhub-target` by default; `CARGO_TARGET_DIR`
-overrides this location.
+`python package.py` then bundles whatever binaries exist into
+`dist/io.github.opendeck-masterhub-{en,pl}.streamDeckPlugin` (`--lang en` / `--lang pl` for just one).
+On Windows `install.ps1` builds and installs straight into OpenDeck (close OpenDeck first);
+the action names follow the Windows display language, `-Lang en` / `-Lang pl` overrides it.
+Other systems: `python3 package.py --install --lang en`.
+GitHub Actions builds all three systems on every push; pushing a `v*` tag publishes a release.
 
+Translations: panel texts are in the HTML (Polish) with English in `data-en` attributes
+(`pi/i18n.js`), texts drawn by the plugin use `i18n::tr("polski", "English")`, and the Polish
+action names live in `pl.json` (Stream Deck localization format).
+
+For a Windows build on Linux (Debian / Ubuntu) install `gcc-mingw-w64-x86-64`, run
+`rustup target add x86_64-pc-windows-gnu` and `sh build-windows.sh` – the result goes to
+`dist/bin/opendeck-masterhub.exe`, which `package.py` prefers over `target/release`.
 Run `cargo test --locked` before building. A feedback preview without hardware:
-
-```sh
-mkdir -p dist
-cargo run --locked --release --example feedback_preview -- \
-  tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png
-```
-
-`python3 package.py` then bundles whatever binaries exist into
-`dist/io.github.opendeck-masterhub.streamDeckPlugin`. GitHub Actions builds all three systems
-on every push; pushing a `v*` tag publishes a release.
-Packaging prefers the Windows executable in `dist/bin`, then falls back to
-`target/release` for a native Windows build.
+`cargo run --release --example feedback_preview -- tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png`.
 
 `examples/` contains small hardware and rendering test tools (`cargo run --example …`).
 
