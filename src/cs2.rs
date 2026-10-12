@@ -18,7 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{MODULES, hub, hub::Kind, render, with_writer};
+use crate::{MODULES, hub, hub::Kind, i18n::tr, render, with_writer};
 
 pub const PORT: u16 = 47231;
 const TOKEN: &str = "opendeck-masterhub";
@@ -337,7 +337,7 @@ fn find_cfg_dir() -> Option<PathBuf> {
 
 fn install_cfg() -> String {
     let Some(dir) = find_cfg_dir() else {
-        return "nie znaleziono CS2 w bibliotekach Steama".into();
+        return tr("nie znaleziono CS2 w bibliotekach Steama", "CS2 not found in the Steam libraries").into();
     };
     *CFG_DIR.lock().unwrap() = Some(dir.clone());
     let setup = format!(
@@ -354,11 +354,18 @@ fn install_cfg() -> String {
     let path = dir.join(CFG_NAME);
     let text = cfg_text();
     if std::fs::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
-        return format!("konfiguracja GSI: {}", path.display());
+        return format!("{}: {}", tr("konfiguracja GSI", "GSI config"), path.display());
     }
     match std::fs::write(&path, text) {
-        Ok(()) => format!("zainstalowano konfigurację GSI (uruchom CS2 ponownie, jeśli był włączony): {}", path.display()),
-        Err(e) => format!("nie udało się zapisać {}: {e}", path.display()),
+        Ok(()) => format!(
+            "{}: {}",
+            tr(
+                "zainstalowano konfigurację GSI (uruchom CS2 ponownie, jeśli był włączony)",
+                "GSI config installed (restart CS2 if it was running)"
+            ),
+            path.display()
+        ),
+        Err(e) => format!("{} {}: {e}", tr("nie udało się zapisać", "could not write"), path.display()),
     }
 }
 
@@ -366,10 +373,12 @@ fn install_cfg() -> String {
 pub fn status_json() -> Value {
     let g = game();
     let data = match g.received {
-        None => "brak danych z gry – uruchom CS2".to_string(),
-        Some(r) if r.elapsed() >= STALE => format!("gra nie wysyła danych od {} s", r.elapsed().as_secs()),
-        Some(_) if !g.in_match => "gra połączona (menu)".to_string(),
-        Some(_) => format!("gra połączona: {} ({})", g.map_name, g.map_phase),
+        None => tr("brak danych z gry – uruchom CS2", "no data from the game – start CS2").to_string(),
+        Some(r) if r.elapsed() >= STALE => {
+            format!("{} {} s", tr("gra nie wysyła danych od", "no data from the game for"), r.elapsed().as_secs())
+        }
+        Some(_) if !g.in_match => tr("gra połączona (menu)", "game connected (menu)").to_string(),
+        Some(_) => format!("{}: {} ({})", tr("gra połączona", "game connected"), g.map_name, g.map_phase),
     };
     serde_json::json!({ "status": data, "cfg": *CFG_STATUS.lock().unwrap() })
 }
@@ -474,7 +483,7 @@ pub fn press(settings: &Value) {
 
 /// Wykonuje polecenie w grze: zapisuje je do pliku cfg i naciska klawisz z bindem `exec`.
 fn console(command: &str) -> Result<(), String> {
-    let dir = CFG_DIR.lock().unwrap().clone().ok_or("nie znaleziono folderu cfg CS2")?;
+    let dir = CFG_DIR.lock().unwrap().clone().ok_or(tr("nie znaleziono folderu cfg CS2", "CS2 cfg folder not found"))?;
     std::fs::write(dir.join(CMD_CFG), format!("{command}
 ")).map_err(|e| e.to_string())?;
     crate::input::send_combo_held(EXEC_KEY, 40)
@@ -498,7 +507,7 @@ fn view(s: &Settings, g: &Game) -> View {
     }
     match s.show.as_str() {
         "bomb" => bomb_view(g).unwrap_or_else(|| {
-            let label = "BOMBA".to_string();
+            let label = tr("BOMBA", "BOMB").to_string();
             simple("bomb-none".into(), Box::new(move |size| render::tile(size, &label, "—", None, GREY, None, None)))
         }),
         "health" => {
@@ -516,8 +525,8 @@ fn view(s: &Settings, g: &Game) -> View {
             simple(
                 format!("armor {armor} {helmet}"),
                 Box::new(move |size| {
-                    let sub = if helmet { Some("+ hełm") } else { None };
-                    render::tile(size, "PANCERZ", &armor.to_string(), sub, BLUE, None, Some(armor as f32 / 100.0))
+                    let sub = if helmet { Some(tr("+ hełm", "+ helmet")) } else { None };
+                    render::tile(size, tr("PANCERZ", "ARMOR"), &armor.to_string(), sub, BLUE, None, Some(armor as f32 / 100.0))
                 }),
             )
         }
@@ -525,7 +534,7 @@ fn view(s: &Settings, g: &Game) -> View {
             let (money, color) = (g.money, g.team_color());
             simple(
                 format!("money {money}"),
-                Box::new(move |size| render::tile(size, "KASA", &format!("${money}"), None, color, None, None)),
+                Box::new(move |size| render::tile(size, tr("KASA", "MONEY"), &format!("${money}"), None, color, None, None)),
             )
         }
         "ammo" => {
@@ -539,7 +548,7 @@ fn view(s: &Settings, g: &Game) -> View {
                         render::tile(size, &weapon_name(name), &clip.to_string(), Some(&format!("/ {reserve}")), color, None, progress)
                     }
                     Some((name, ..)) => render::tile(size, &weapon_name(name), "—", None, GREY, None, None),
-                    None => render::tile(size, "BROŃ", "—", None, GREY, None, None),
+                    None => render::tile(size, tr("BROŃ", "WEAPON"), "—", None, GREY, None, None),
                 }),
             )
         }
@@ -550,7 +559,7 @@ fn view(s: &Settings, g: &Game) -> View {
                 Box::new(move |size| {
                     let sub = (hs > 0).then(|| format!("{hs} HS"));
                     let color = if k >= 3 { YELLOW } else { GREEN };
-                    render::tile(size, "W RUNDZIE", &k.to_string(), sub.as_deref(), color, None, None)
+                    render::tile(size, tr("W RUNDZIE", "THIS ROUND"), &k.to_string(), sub.as_deref(), color, None, None)
                 }),
             )
         }
@@ -571,7 +580,7 @@ fn view(s: &Settings, g: &Game) -> View {
                 Box::new(move |size| {
                     // Najpierw wynik naszej drużyny.
                     let (value, color) = if team == "T" { (format!("{t}:{ct}"), TT) } else { (format!("{ct}:{t}"), CT) };
-                    render::tile(size, "WYNIK", &value, Some(&format!("runda {}", round + 1)), color, None, None)
+                    render::tile(size, tr("WYNIK", "SCORE"), &value, Some(&format!("{} {}", tr("runda", "round"), round + 1)), color, None, None)
                 }),
             )
         }
@@ -597,14 +606,14 @@ fn view(s: &Settings, g: &Game) -> View {
 
 fn idle_label(s: &Settings) -> String {
     match s.show.as_str() {
-        "bomb" => "BOMBA",
+        "bomb" => tr("BOMBA", "BOMB"),
         "health" => "HP",
-        "armor" => "PANCERZ",
-        "money" => "KASA",
-        "ammo" => "AMUNICJA",
-        "kills" => "W RUNDZIE",
+        "armor" => tr("PANCERZ", "ARMOR"),
+        "money" => tr("KASA", "MONEY"),
+        "ammo" => tr("AMUNICJA", "AMMO"),
+        "kills" => tr("W RUNDZIE", "THIS ROUND"),
         "kda" => "K / D",
-        "score" => "WYNIK",
+        "score" => tr("WYNIK", "SCORE"),
         "buy" if !s.label.trim().is_empty() => s.label.trim(),
         "buy" => return s.item.to_uppercase(),
         _ => "CS2",
@@ -640,11 +649,11 @@ fn bomb_view(g: &Game) -> Option<View> {
                     left / BOMB_TIME,
                     BLUE,
                     render::TRACK,
-                    Some("ROZBRAJANIE"),
+                    Some(tr("ROZBRAJANIE", "DEFUSING")),
                     &value,
-                    &format!("jeszcze {d:.1} s"),
+                    &format!("{} {d:.1} s", tr("jeszcze", "left")),
                 ),
-                None => render::ring(size, left / BOMB_TIME, RED, render::TRACK, Some("BOMBA"), &value, "sekund"),
+                None => render::ring(size, left / BOMB_TIME, RED, render::TRACK, Some(tr("BOMBA", "BOMB")), &value, tr("sekund", "seconds")),
             }
         }),
     })
@@ -663,7 +672,7 @@ fn auto_view(g: &Game) -> View {
         let money = g.money;
         return simple(
             format!("warmup {money}"),
-            Box::new(move |size| render::ring(size, 1.0, GREY, render::TRACK, Some("ROZGRZEWKA"), &format!("${money}"), "")),
+            Box::new(move |size| render::ring(size, 1.0, GREY, render::TRACK, Some(tr("ROZGRZEWKA", "WARMUP")), &format!("${money}"), "")),
         );
     }
     if g.round_phase == "over" {
@@ -673,13 +682,13 @@ fn auto_view(g: &Game) -> View {
             format!("over {mine} {theirs} {won} {lost}"),
             Box::new(move |size| {
                 let (color, label) = if won {
-                    (GREEN, "wygrana runda")
+                    (GREEN, tr("wygrana runda", "round won"))
                 } else if lost {
-                    (RED, "przegrana runda")
+                    (RED, tr("przegrana runda", "round lost"))
                 } else {
-                    (GREY, "koniec rundy")
+                    (GREY, tr("koniec rundy", "round over"))
                 };
-                render::ring(size, 1.0, color, render::TRACK, Some("WYNIK"), &format!("{mine}:{theirs}"), label)
+                render::ring(size, 1.0, color, render::TRACK, Some(tr("WYNIK", "SCORE")), &format!("{mine}:{theirs}"), label)
             }),
         );
     }
@@ -690,7 +699,7 @@ fn auto_view(g: &Game) -> View {
         return simple(
             format!("freeze {money} {left:?}"),
             Box::new(move |size| {
-                let label = left.map(|l| format!("start za {l} s")).unwrap_or_else(|| "zakupy".into());
+                let label = left.map(|l| format!("{} {l} s", tr("start za", "starts in"))).unwrap_or_else(|| tr("zakupy", "buy time").into());
                 render::ring(size, 1.0, color, render::TRACK, Some(&format!("{mine}:{theirs}")), &format!("${money}"), &label)
             }),
         );
@@ -700,7 +709,7 @@ fn auto_view(g: &Game) -> View {
         return simple(
             format!("alive {hp} {armor} {helmet} {money}"),
             Box::new(move |size| {
-                let label = format!("pancerz {armor}{} · ${money}", if helmet { "+H" } else { "" });
+                let label = format!("{} {armor}{} · ${money}", tr("pancerz", "armor"), if helmet { "+H" } else { "" });
                 render::ring(size, hp as f32 / 100.0, health_color(hp), render::TRACK, Some("HP"), &hp.to_string(), &label)
             }),
         );
@@ -746,7 +755,7 @@ fn weapon_name(raw: &str) -> String {
         "incgrenade" => "Incendiary",
         "decoy" => "Decoy",
         "c4" => "C4",
-        n if n.starts_with("knife") || n == "bayonet" => "Nóż",
+        n if n.starts_with("knife") || n == "bayonet" => tr("Nóż", "Knife"),
         n => return n.to_uppercase(),
     }
     .to_string()
@@ -764,7 +773,10 @@ pub fn updates() -> Vec<(String, String)> {
             ("events", _) | (_, "events") => "events",
             _ => "off",
         };
-        let v = view(&inst.settings, &g);
+        let mut v = view(&inst.settings, &g);
+        // Zmiana języka też wymusza przerysowanie.
+        v.fine.insert_str(0, crate::i18n::code());
+        v.coarse.insert_str(0, crate::i18n::code());
         if let Some(device) = &inst.dial {
             if v.fine != inst.fine {
                 inst.fine = v.fine.clone();

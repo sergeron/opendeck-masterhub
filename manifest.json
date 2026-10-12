@@ -109,7 +109,7 @@
     {
       "UUID": "io.github.opendeck-masterhub.cs2",
       "Name": "CS2",
-      "Tooltip": "Counter-Strike 2: licznik bomby, HP, kasa, amunicja, zakupy; diody reagują na grę",
+      "Tooltip": "Counter-Strike 2: bomb timer, HP, money, ammo, buy buttons; LEDs react to the game",
       "Icon": "icons/cs2",
       "States": [
         {

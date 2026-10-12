@@ -1,6 +1,6 @@
 {
   "Name": "Cooler Master MasterHUB",
-  "Description": "Nieoficjalna obsługa modułów Cooler Master MasterHUB (15xKey, 3xKnob, 2xRoller, 1xDial, 5xFader) z akcjami podświetlenia, głośności, animacji GIF, czujników i zegara",
+  "Description": "Nieoficjalna obsługa modułów Cooler Master MasterHUB (15xKey, 3xKnob, 2xRoller, 1xDial, 5xFader) z akcjami podświetlenia, głośności, animacji GIF, czujników, zegara i Counter-Strike 2",
   "io.github.opendeck-masterhub.lighting": {
     "Name": "Podświetlenie",
     "Tooltip": "Kolor, efekt i jasność diod bazy, gałek i fadera"
@@ -20,5 +20,9 @@
   "io.github.opendeck-masterhub.clock": {
     "Name": "Zegar",
     "Tooltip": "Godzina i data – np. na okrągłym ekranie pokrętła; wciśnięcie może otworzyć program, wysłać skrót albo wyciszyć"
+  },
+  "io.github.opendeck-masterhub.cs2": {
+    "Name": "CS2",
+    "Tooltip": "Counter-Strike 2: licznik bomby, HP, kasa, amunicja, zakupy; diody reagują na grę"
   }
 }
