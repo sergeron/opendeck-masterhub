@@ -80,10 +80,7 @@ fn watcher(tx: UnboundedSender<Msg>) {
             log::info!("Podłączono {} ({id})", kind.name());
 
             open_paths.lock().unwrap().insert(path.clone());
-            MODULES
-                .lock()
-                .unwrap()
-                .insert(id.clone(), Module { kind, writer: Arc::new(Mutex::new(writer)) });
+            MODULES.lock().unwrap().insert(id.clone(), Module { kind, writer: Arc::new(Mutex::new(writer)) });
             let _ = tx.send(Msg::Register { id: id.clone(), kind });
 
             let (tx, open_paths) = (tx.clone(), open_paths.clone());
@@ -91,6 +88,7 @@ fn watcher(tx: UnboundedSender<Msg>) {
                 read_loop(reader, kind, &id, &tx);
                 log::info!("Odłączono {} ({id})", kind.name());
                 MODULES.lock().unwrap().remove(&id);
+                overlay::clear_feedback(&id, None);
                 open_paths.lock().unwrap().remove(&path);
                 let _ = tx.send(Msg::Deregister(id));
             });
@@ -109,6 +107,9 @@ fn read_loop(dev: HidDevice, kind: Kind, id: &str, tx: &UnboundedSender<Msg>) {
             Err(_) => return,
         };
         for input in decoder.decode(&buf[..n]) {
+            if let Input::EncoderTwist(position, _) = input {
+                overlay::encoder_twist(id, position);
+            }
             if let Input::FaderValue(i, v) = input {
                 FADER_VALUES.lock().unwrap().insert((id.to_string(), i), v);
                 continue;
@@ -134,9 +135,7 @@ async fn dispatcher(mut rx: UnboundedReceiver<Msg>) {
             Msg::Deregister(id) if id.starts_with("mh-MHBS") => Ok(()),
             Msg::Register { id, kind } => {
                 let (rows, columns, encoders) = kind.layout();
-                let r = out
-                    .register_device(id.clone(), kind.name().to_string(), rows, columns, encoders, 0)
-                    .await;
+                let r = out.register_device(id.clone(), kind.name().to_string(), rows, columns, encoders, 0).await;
                 // Komendy dla modułu idą w tle: zawieszony moduł nie może blokować zgłaszania
                 // kolejnych urządzeń ani zdarzeń.
                 background(move || {
@@ -171,8 +170,7 @@ type PendingImages = HashMap<String, (HashMap<u8, Option<String>>, bool)>;
 static PENDING_IMAGES: LazyLock<Mutex<PendingImages>> = LazyLock::new(Default::default);
 
 /// Wysyła oczekujące obrazy urządzenia, aż kolejka będzie pusta.
-fn image_worker(device: String, kind: Kind) {
-    let size = if kind == Kind::Dial { hub::DIAL_IMAGE_SIZE } else { hub::KEY_IMAGE_SIZE };
+fn image_worker(device: String) {
     loop {
         let next = {
             let mut pending = PENDING_IMAGES.lock().unwrap();
@@ -186,12 +184,9 @@ fn image_worker(device: String, kind: Kind) {
             }
         };
         let Some((position, image)) = next else { continue };
-        match images::to_jpeg(image.as_deref(), size) {
+        match images::to_jpeg(image.as_deref(), hub::KEY_IMAGE_SIZE) {
             Ok(jpeg) => {
-                with_writer(&device, |dev| match kind {
-                    Kind::Dial => hub::upload_dial_image(dev, &jpeg),
-                    _ => hub::upload_key_image(dev, position, &jpeg),
-                });
+                with_writer(&device, |dev| hub::upload_key_image(dev, position, &jpeg));
             }
             Err(e) => log::error!("Nie udało się przygotować obrazka: {e}"),
         }
@@ -226,11 +221,24 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
     }
 
     async fn set_image(&self, event: SetImageEvent, _outbound: &mut OutboundEventManager) -> EventHandlerResult {
-        // Obrazki enkoderów (pasek Stream Decka+) pomijamy; ekran pokrętła pokazuje ikonę jego klawisza.
+        let Some(kind) = MODULES.lock().unwrap().get(&event.device).map(|m| m.kind) else { return Ok(()) };
+        if event.controller.is_none() && event.position.is_none() && event.image.is_none() {
+            overlay::clear_feedback(&event.device, None);
+        }
         if event.controller.as_deref() == Some("Encoder") {
+            let encoders = kind.layout().2;
+            if encoders == 0 || event.position.is_some_and(|p| p >= encoders) {
+                return Ok(());
+            }
+            let Some(image) = event.image.filter(|image| !image.trim().is_empty()) else {
+                overlay::clear_feedback(&event.device, event.position);
+                return Ok(());
+            };
+            // Źródłem może być dowolny enkoder; knoby i rollery korzystają z LCD
+            // podłączonych pokręteł. Stan jest przypisany do urządzenia ORAZ pozycji.
+            overlay::show_feedback(&event.device, event.position, encoders, image);
             return Ok(());
         }
-        let Some(kind) = MODULES.lock().unwrap().get(&event.device).map(|m| m.kind) else { return Ok(()) };
         let key_count = match kind {
             Kind::Keys15 => 15,
             Kind::Dial => 1,
@@ -245,11 +253,11 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
         let positions: Vec<u8> = positions.into_iter().filter(|p| !gif::is_playing(&event.device, *p)).collect();
         let image = if event.position.is_some() { event.image } else { None };
         if kind == Kind::Dial {
-            overlay::remember(&event.device, image.clone());
-            if overlay::active(&event.device) || overlay::has_direct(&event.device) {
-                // Obraz wróci po zniknięciu nakładki / ekran rysuje plugin (np. zegar).
-                return Ok(());
+            if !positions.is_empty() {
+                // Wszystkie obrazy LCD obsługuje jeden worker, także zegar i GIF.
+                overlay::remember(&event.device, image);
             }
+            return Ok(());
         }
 
         // Zapamiętujemy tylko najnowszy obraz dla każdego klawisza; przy szybkich zmianach
@@ -263,7 +271,7 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
             !std::mem::replace(running, true)
         };
         if start_worker {
-            tokio::task::spawn_blocking(move || image_worker(event.device, kind));
+            tokio::task::spawn_blocking(move || image_worker(event.device));
         }
         Ok(())
     }
@@ -512,10 +520,8 @@ impl openaction::ActionEventHandler for ActionEventHandler {
 }
 
 fn init_logging() {
-    let path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("masterhub.log")))
-        .unwrap_or_else(|| "masterhub.log".into());
+    let path =
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("masterhub.log"))).unwrap_or_else(|| "masterhub.log".into());
     let config = simplelog::Config::default();
     let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![simplelog::TermLogger::new(
         simplelog::LevelFilter::Info,

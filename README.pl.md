@@ -36,6 +36,37 @@ Akcje w kategorii **MasterHUB**:
   Na Windows także **FPS i czas klatki aktywnego okna** z RivaTuner Statistics Server
   (np. razem z MSI Afterburnerem) – działa bez LibreHardwareMonitor.
 
+## Feedback enkodera LCD (0.6.3)
+
+Ekran **1xDial** pokazuje feedback dowolnego enkodera MasterHUB. Akcja na pokrętle LCD
+korzysta z jego ekranu, a akcja na **każdym z trzech knobów i obu rollerów** trafia
+na podłączone LCD. Każde urządzenie i pozycja enkodera mają osobną pamięć feedbacku.
+Ostatnio obracany enkoder wybiera źródło obrazu; spóźniona odpowiedź innego enkodera
+nie nadpisuje jego wartości.
+
+Standardowy biały pasek **`$B1`** jest zamieniany na okrągły wskaźnik **240×240**.
+Procent i tytuł są wycinane z oryginalnego obrazu, a inne układy zachowują proporcje.
+Pusta klatka `$B1` po resecie układu jest pomijana do nadejścia właściwej wartości.
+Odświeżenia profilu bez obrotu aktualizują pamięć bez włączania nakładki.
+Po około **1,5 s** wraca zegar albo najnowszy obraz tła. Na oczekiwaną odpowiedź HA
+plugin czeka do **5 s** od obrotu; odświeżenie zakończonej interakcji nie otwiera
+ponownie nakładki.
+
+Jeden worker LCD wysyła feedback, zegar, obrazy klawisza i GIF. Wybiera najnowszą
+klatkę, sprawdza rewizję po przejęciu blokady HID i ponawia nieudane zapisy.
+**Jedna potwierdzona wartość to jedna klatka**, bez interpolacji pierścienia.
+Zmniejsza to ruch USB i usuwa poziomy pośrednie. Przy wolnym USB oczekuje najnowsza
+aktualizacja, bez narastającej kolejki starych obrazów.
+
+Zachowaj krok HA **±5%**, feedback **`$B1`** oraz **Tick bucket size = 50 ms**,
+przypisując akcję do dowolnego enkodera pokrętła, knoba lub rollera. **Zegar** zostaje
+na klawiszu modułu LCD. MasterHUB przekazuje pojedynczy skok obrotu jako jeden tick
+i pokazuje procent otrzymany z HA. Domyślny szablon HA ucina procent jasności;
+[instrukcja konfiguracji](docs/ha-lcd-feedback.md) zawiera także szablon wyświetlania
+zaokrąglony do 5%, jeśli taki ma być widoczny krok.
+
+Czas zapisu USB i rzeczywisty feedback HA wymagają sprawdzenia na fizycznym urządzeniu.
+
 ## Instalacja
 
 Wspólne dla wszystkich systemów:
@@ -100,10 +131,26 @@ Wymaga [Rusta](https://rustup.rs) (1.85+).
 | System | Polecenie | Wynik |
 |---|---|---|
 | Windows | `cargo build --release`, potem `install.ps1` kopiuje go do OpenDecka (zamknij najpierw OpenDecka) | `target/release/opendeck-masterhub.exe` |
+| Windows x64 z Linuksa | `sh build-windows.sh` | `dist/bin/opendeck-masterhub.exe` |
 | Linux / WSL | `sh build-linux.sh` | `dist/bin/opendeck-masterhub-linux` |
 | macOS | `sh macos/build.sh` (plik uniwersalny) | `dist/bin/opendeck-masterhub-mac` |
 
-`python package.py` pakuje dostępne pliki do `dist/io.github.opendeck-masterhub.streamDeckPlugin`.
+Build Windows na Debianie / Ubuntu wymaga `gcc-mingw-w64-x86-64` oraz
+`rustup target add x86_64-pc-windows-gnu`. Skrypty Linux i Windows domyślnie trzymają
+pliki kompilacji w `$HOME/.cache/opendeck-masterhub-target`; można ustawić
+`CARGO_TARGET_DIR`.
+
+Przed budowaniem uruchom `cargo test --locked`. Podgląd feedbacku bez urządzenia:
+
+```sh
+mkdir -p dist
+cargo run --locked --release --example feedback_preview -- \
+  tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png
+```
+
+`python3 package.py` pakuje dostępne pliki do `dist/io.github.opendeck-masterhub.streamDeckPlugin`.
+Windows EXE jest wybierany najpierw z `dist/bin`, a następnie z `target/release`
+(natywny build na Windowsie).
 GitHub Actions buduje wszystkie trzy systemy przy każdym pushu; tag `v*` publikuje wydanie.
 
 W `examples/` są małe narzędzia testowe sprzętu i grafiki (`cargo run --example …`).

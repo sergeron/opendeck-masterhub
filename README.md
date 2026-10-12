@@ -36,6 +36,37 @@ Actions in the **MasterHUB** category (their settings panels are in Polish):
   On Windows also **FPS and frame time of the focused window** from RivaTuner Statistics Server
   (e.g. bundled with MSI Afterburner) – works without LibreHardwareMonitor.
 
+## LCD encoder feedback (0.6.3)
+
+The **1xDial** LCD displays feedback from any MasterHUB encoder. An action on the
+LCD dial uses its own screen; **any of the three knobs or either roller** sends its
+feedback to the connected LCD dials. Each device and encoder position has separate
+feedback memory. The most recently rotated encoder owns the shared screen, so a
+late response from another encoder cannot replace its value.
+
+The standard white **`$B1`** bar becomes a **240×240 round gauge**. The percentage
+and title come from the original feedback image. Other layouts keep their proportions.
+An empty `$B1` frame caused by a layout reset is skipped until its value arrives.
+Profile refreshes without a rotation update memory without opening the overlay.
+After about **1.5 seconds**, the clock or latest background image returns. An awaited
+HA response can arrive up to **5 seconds** after rotation; completed interactions
+cannot be reopened by profile refreshes.
+
+One worker per LCD sends feedback, the clock, key images and GIF frames. It selects
+the latest frame, checks its revision after acquiring the HID writer and retries
+failed uploads. **Each confirmed value uses one frame**, without ring interpolation.
+This reduces USB traffic and avoids displaying intermediate ring levels. The plugin
+keeps the latest pending update rather than building a queue behind slow USB writes.
+
+Keep the HA brightness step at **±5%** and feedback **`$B1`**, assigning the action
+to any dial, knob or roller encoder. Set **Tick bucket size = 50 ms** in the HA plugin.
+The **Zegar (Clock)** action stays on the LCD dial's key. MasterHUB forwards each
+rotary detent as one tick and displays the percentage supplied by HA. The default
+HA template truncates brightness percentages; the [configuration guide](docs/ha-lcd-feedback.md)
+includes a display template rounded to 5% when that is the desired presentation.
+
+USB timing and actual HA feedback still need a check on the physical device.
+
 ## Installation
 
 All systems:
@@ -99,12 +130,29 @@ Requires [Rust](https://rustup.rs) (1.85+). Code comments are in Polish.
 | System | Command | Output |
 |---|---|---|
 | Windows | `cargo build --release`, then `install.ps1` copies it into OpenDeck (close OpenDeck first) | `target/release/opendeck-masterhub.exe` |
+| Windows x64 built on Linux | `sh build-windows.sh` | `dist/bin/opendeck-masterhub.exe` |
 | Linux / WSL | `sh build-linux.sh` | `dist/bin/opendeck-masterhub-linux` |
 | macOS | `sh macos/build.sh` (universal binary) | `dist/bin/opendeck-masterhub-mac` |
 
-`python package.py` then bundles whatever binaries exist into
+For the Windows cross-build on Debian / Ubuntu, install
+`gcc-mingw-w64-x86-64` and add the Rust target with
+`rustup target add x86_64-pc-windows-gnu`. The Linux and Windows scripts keep build
+files in `$HOME/.cache/opendeck-masterhub-target` by default; `CARGO_TARGET_DIR`
+overrides this location.
+
+Run `cargo test --locked` before building. A feedback preview without hardware:
+
+```sh
+mkdir -p dist
+cargo run --locked --release --example feedback_preview -- \
+  tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png
+```
+
+`python3 package.py` then bundles whatever binaries exist into
 `dist/io.github.opendeck-masterhub.streamDeckPlugin`. GitHub Actions builds all three systems
 on every push; pushing a `v*` tag publishes a release.
+Packaging prefers the Windows executable in `dist/bin`, then falls back to
+`target/release` for a native Windows build.
 
 `examples/` contains small hardware and rendering test tools (`cargo run --example …`).
 

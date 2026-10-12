@@ -2,7 +2,8 @@
 (Plugins -> Install from file). Zawiera tylko pliki pluginu – bez logów i danych użytkownika.
 
 Pliki programu dla poszczególnych systemów:
-- Windows: target/release/opendeck-masterhub.exe   (cargo build --release)
+- Windows: dist/bin/opendeck-masterhub.exe         (build-windows.sh na Linuksie)
+           albo target/release/opendeck-masterhub.exe (cargo build --release na Windows)
 - Linux:   dist/bin/opendeck-masterhub-linux        (build-linux.sh w WSL albo na Linuksie)
 - macOS:   dist/bin/opendeck-masterhub-mac          (macos/build.sh na Macu)
 Brakujące są pomijane (z ostrzeżeniem) – plugin działa wtedy tylko na pozostałych systemach.
@@ -20,15 +21,21 @@ FOLDER = "io.github.opendeck-masterhub.sdPlugin"
 FILES = {
     "manifest.json": ROOT / "manifest.json",
     "README.md": ROOT / "README.md",
+    "README.pl.md": ROOT / "README.pl.md",
+    "docs/ha-lcd-feedback.md": ROOT / "docs" / "ha-lcd-feedback.md",
+    "docs/ha-lcd-feedback-0.6.2.md": ROOT / "docs" / "ha-lcd-feedback-0.6.2.md",
     "icon.png": ROOT / "assets" / "icon.png",
     "icon@2x.png": ROOT / "assets" / "icon@2x.png",
     "70-masterhub.rules": ROOT / "linux" / "70-masterhub.rules",
 }
 
 BINARIES = {
-    "opendeck-masterhub.exe": ROOT / "target" / "release" / "opendeck-masterhub.exe",
-    "opendeck-masterhub-linux": ROOT / "dist" / "bin" / "opendeck-masterhub-linux",
-    "opendeck-masterhub-mac": ROOT / "dist" / "bin" / "opendeck-masterhub-mac",
+    "opendeck-masterhub.exe": (
+        ROOT / "dist" / "bin" / "opendeck-masterhub.exe",
+        ROOT / "target" / "release" / "opendeck-masterhub.exe",
+    ),
+    "opendeck-masterhub-linux": (ROOT / "dist" / "bin" / "opendeck-masterhub-linux",),
+    "opendeck-masterhub-mac": (ROOT / "dist" / "bin" / "opendeck-masterhub-mac",),
 }
 
 
@@ -45,9 +52,10 @@ def main():
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for name, src in entries.items():
             z.write(src, f"{FOLDER}/{name}")
-        for name, src in BINARIES.items():
-            if not src.exists():
-                print(f"UWAGA: brak {src} – paczka nie zadziała na tym systemie")
+        for name, candidates in BINARIES.items():
+            src = next((path for path in candidates if path.exists()), None)
+            if src is None:
+                print(f"UWAGA: brak {' lub '.join(map(str, candidates))} – paczka nie zadziała na tym systemie")
                 continue
             info = zipfile.ZipInfo.from_file(src, f"{FOLDER}/{name}")
             info.compress_type = zipfile.ZIP_DEFLATED

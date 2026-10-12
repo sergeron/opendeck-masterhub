@@ -8,7 +8,7 @@ use image::{ImageBuffer, Rgb, RgbImage};
 use imageproc::drawing::draw_text_mut;
 use std::sync::LazyLock;
 
-const BG: Rgb<u8> = Rgb([16, 16, 22]);
+pub const BG: Rgb<u8> = Rgb([16, 16, 22]);
 pub const TRACK: Rgb<u8> = Rgb([48, 48, 60]);
 const ACCENT: Rgb<u8> = Rgb([124, 58, 237]);
 const MUTED: Rgb<u8> = Rgb([200, 40, 40]);
@@ -153,7 +153,11 @@ pub fn png_data_url(img: &RgbImage) -> String {
 
 /// JPG gotowy do wysłania na moduł.
 pub fn jpeg(img: &RgbImage) -> Vec<u8> {
+    jpeg_with_quality(img, 95)
+}
+
+pub fn jpeg_with_quality(img: &RgbImage, quality: u8) -> Vec<u8> {
     let mut out = Vec::new();
-    let _ = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 95).encode_image(img);
+    let _ = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality).encode_image(img);
     out
 }

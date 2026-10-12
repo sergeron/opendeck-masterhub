@@ -314,3 +314,31 @@ impl Decoder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn packet(id: u8, data: &[u8]) -> Vec<u8> {
+        let mut packet = vec![0x01, 0, 0, 0, id, data.len() as u8];
+        packet.extend(data);
+        packet
+    }
+
+    #[test]
+    fn every_rotary_detent_is_forwarded_as_one_tick_in_both_directions() {
+        for (kind, id, count, positive) in [(Kind::Dial, 0x03, 1, 0), (Kind::Knob3, 0x00, 3, 1), (Kind::Roller2, 0x01, 2, 0)] {
+            for raw_position in 0..count {
+                let position = if kind == Kind::Roller2 { count - 1 - raw_position } else { raw_position };
+                for (value, ticks) in [(positive, 1), (1 - positive, -1)] {
+                    let mut data = vec![0xff; count];
+                    data[raw_position] = value;
+                    let mut decoder = Decoder::new(kind);
+                    for _ in 0..20 {
+                        assert_eq!(decoder.decode(&packet(id, &data)), [Input::EncoderTwist(position as u8, ticks)]);
+                    }
+                }
+            }
+        }
+    }
+}
