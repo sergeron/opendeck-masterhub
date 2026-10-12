@@ -36,10 +36,13 @@ function connectElgatoStreamDeckSocket(port, uuid, registerEvent, info, action) 
 	if (typeof onFormChange === "function") onFormChange();
 
 	socket = new WebSocket("ws://localhost:" + port);
-	// Wiadomości od pluginu (sendToPropertyInspector) – strona może je obsłużyć w onPluginMessage.
+	I18N.attach(socket, uuid);
+	// Wiadomości od pluginu (sendToPropertyInspector): język obsługuje i18n.js, resztę strona
+	// w onPluginMessage.
 	socket.onmessage = (e) => {
 		const msg = JSON.parse(e.data);
-		if (msg.event === "sendToPropertyInspector" && typeof onPluginMessage === "function") onPluginMessage(msg.payload);
+		if (msg.event !== "sendToPropertyInspector" || I18N.handle(msg.payload)) return;
+		if (typeof onPluginMessage === "function") onPluginMessage(msg.payload);
 	};
 	socket.onopen = () => {
 		socket.send(JSON.stringify({ event: registerEvent, uuid }));

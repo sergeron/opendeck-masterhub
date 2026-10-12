@@ -46,6 +46,17 @@ Akcje w kategorii **MasterHUB**:
   bez bindów – plugin zapisuje polecenie do pliku cfg i naciska F13, przypisany w grze do
   `exec` tego pliku (jednorazowo w konsoli CS2: `exec opendeck_masterhub`).
 
+## Języki
+
+Plugin mówi **po polsku i po angielsku**: panele ustawień, napisy rysowane na ekranach
+(nakładka głośności, data na zegarze…) i komunikaty czujników. Język zależy od zainstalowanej
+paczki i można go zmienić w ustawieniach dowolnej akcji (**Język / Language**: Auto / Polski /
+English – wspólny dla wszystkich akcji). Wydania zawierają dwie paczki, które różnią się tylko
+nazwami akcji na liście OpenDecka (OpenDeck czyta je z manifestu i nie ma polskiej wersji):
+
+- `io.github.opendeck-masterhub-pl.streamDeckPlugin` – polskie nazwy,
+- `io.github.opendeck-masterhub-en.streamDeckPlugin` – angielskie nazwy.
+
 ## Instalacja
 
 Wspólne dla wszystkich systemów:
@@ -53,8 +64,8 @@ Wspólne dla wszystkich systemów:
 1. Zainstaluj OpenDecka (2.14 lub nowszy).
 2. **Zamknij oficjalną aplikację Cooler Master MasterHUB**, jeśli działa – oba programy
    naraz walczyłyby o moduły.
-3. Pobierz `io.github.opendeck-masterhub.streamDeckPlugin` z [Releases](../../releases)
-   i w OpenDecku wybierz **Plugins → Install from file**.
+3. Pobierz `io.github.opendeck-masterhub-pl.streamDeckPlugin` (albo `-en`) z
+   [Releases](../../releases) i w OpenDecku wybierz **Plugins → Install from file**.
 4. Moduły pojawią się na liście urządzeń OpenDecka w ciągu kilku sekund.
 
 ### Windows (10 / 11)
@@ -105,16 +116,23 @@ jest obsługiwany – plugin uruchamia programy systemowe przez `flatpak-spawn -
 
 ## Budowanie
 
-Wymaga [Rusta](https://rustup.rs) (1.85+).
+Wymaga [Rusta](https://rustup.rs) (1.85+) i Pythona 3 do pakowania. Komentarze w kodzie są po polsku.
 
 | System | Polecenie | Wynik |
 |---|---|---|
-| Windows | `cargo build --release`, potem `install.ps1` kopiuje go do OpenDecka (zamknij najpierw OpenDecka) | `target/release/opendeck-masterhub.exe` |
+| Windows | `cargo build --release` | `target/release/opendeck-masterhub.exe` |
 | Linux / WSL | `sh build-linux.sh` | `dist/bin/opendeck-masterhub-linux` |
 | macOS | `sh macos/build.sh` (plik uniwersalny) | `dist/bin/opendeck-masterhub-mac` |
 
-`python package.py` pakuje dostępne pliki do `dist/io.github.opendeck-masterhub.streamDeckPlugin`.
+`python package.py` pakuje dostępne pliki do `dist/io.github.opendeck-masterhub-{en,pl}.streamDeckPlugin`
+(`--lang en` / `--lang pl` – tylko jedna). Na Windows `install.ps1` buduje i instaluje od razu
+do OpenDecka (zamknij najpierw OpenDecka); nazwy akcji według języka Windows, `-Lang en` /
+`-Lang pl` to zmienia. Inne systemy: `python3 package.py --install --lang pl`.
 GitHub Actions buduje wszystkie trzy systemy przy każdym pushu; tag `v*` publikuje wydanie.
+
+Tłumaczenia: teksty paneli są w HTML (po polsku), angielskie w atrybutach `data-en`
+(`pi/i18n.js`); napisy rysowane przez plugin – `i18n::tr("polski", "English")`; polskie nazwy
+akcji – `pl.json` (format tłumaczeń Stream Decka).
 
 W `examples/` są małe narzędzia testowe sprzętu i grafiki (`cargo run --example …`).
 

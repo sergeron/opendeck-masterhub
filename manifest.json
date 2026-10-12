@@ -2,7 +2,7 @@
   "Name": "Cooler Master MasterHUB",
   "Description": "Unofficial device support for Cooler Master MasterHUB modules (15xKey, 3xKnob, 2xRoller, 1xDial, 5xFader), with lighting, volume, animated GIF, hardware sensor, clock and Counter-Strike 2 actions",
   "Author": "MasterHUB community",
-  "Version": "0.6.2",
+  "Version": "0.7.0",
   "PluginUUID": "io.github.opendeck-masterhub",
   "CodePathWin": "opendeck-masterhub.exe",
   "Icon": "icon",
@@ -24,8 +24,8 @@
   "Actions": [
     {
       "UUID": "io.github.opendeck-masterhub.lighting",
-      "Name": "Podświetlenie",
-      "Tooltip": "Kolor, efekt i jasność diod bazy, gałek i fadera",
+      "Name": "Lighting",
+      "Tooltip": "Colour, effect and brightness of the LEDs on the base, knobs and fader",
       "Icon": "icons/lighting",
       "States": [
         {
@@ -40,8 +40,8 @@
     },
     {
       "UUID": "io.github.opendeck-masterhub.volume",
-      "Name": "Głośność",
-      "Tooltip": "Fader: pozycja = głośność. Gałki/rolki/pokrętło: obrót zmienia, wciśnięcie wycisza",
+      "Name": "Volume",
+      "Tooltip": "Fader: slider position = volume. Knobs / rollers / dial: rotate to change, press to mute",
       "Icon": "icons/volume",
       "States": [
         {
@@ -57,8 +57,8 @@
     },
     {
       "UUID": "io.github.opendeck-masterhub.gif",
-      "Name": "Animacja GIF",
-      "Tooltip": "Animowany GIF na klawiszu 15xKey lub ekranie pokrętła",
+      "Name": "GIF animation",
+      "Tooltip": "Animated GIF on a 15xKey key or the dial screen",
       "Icon": "icons/gif",
       "States": [
         {
@@ -73,8 +73,8 @@
     },
     {
       "UUID": "io.github.opendeck-masterhub.sensor",
-      "Name": "Czujnik",
-      "Tooltip": "Temperatura, obciążenie, moc, wentylatory… z LibreHardwareMonitor",
+      "Name": "Sensor",
+      "Tooltip": "Temperature, load, power, fans… from LibreHardwareMonitor, FPS from RivaTuner",
       "Icon": "icons/sensor",
       "States": [
         {
@@ -91,8 +91,8 @@
     },
     {
       "UUID": "io.github.opendeck-masterhub.clock",
-      "Name": "Zegar",
-      "Tooltip": "Godzina i data – np. na okrągłym ekranie pokrętła; wciśnięcie może otworzyć program albo wysłać skrót",
+      "Name": "Clock",
+      "Tooltip": "Time and date – e.g. on the dial's round screen; pressing can open a program, send a shortcut or mute",
       "Icon": "icons/clock",
       "States": [
         {

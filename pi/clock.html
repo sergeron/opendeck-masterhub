@@ -3,6 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<link rel="stylesheet" href="pi.css" />
+		<script src="i18n.js"></script>
 		<script src="common.js"></script>
 		<script>
 			function onFormChange() {
@@ -11,41 +12,42 @@
 				document.getElementById("target-row").classList.toggle("hidden", press === "none" || press === "mute");
 				document.getElementById("mute-row").classList.toggle("hidden", press !== "mute");
 				document.getElementById("key-hint").classList.toggle("hidden", press !== "key");
-				target.placeholder = press === "key" ? "ctrl+shift+m" : "https://… albo C:\\…\\program.exe";
+				target.placeholder = press === "key" ? "ctrl+shift+m" : t("https://… albo C:\\…\\program.exe", "https://… or C:\\…\\program.exe");
 			}
+			I18N.onChange(onFormChange);
 		</script>
 	</head>
 	<body>
 		<div class="row">
-			<label for="date">Data</label>
-			<label><input id="date" data-key="date" type="checkbox" checked /> pokazuj datę</label>
+			<label for="date" data-en="Date">Data</label>
+			<label><input id="date" data-key="date" type="checkbox" checked /> <span data-en="show the date">pokazuj datę</span></label>
 		</div>
 		<div class="row">
-			<label for="seconds">Sekundy</label>
-			<label><input id="seconds" data-key="seconds" type="checkbox" /> pokazuj sekundy</label>
+			<label for="seconds" data-en="Seconds">Sekundy</label>
+			<label><input id="seconds" data-key="seconds" type="checkbox" /> <span data-en="show seconds">pokazuj sekundy</span></label>
 		</div>
 		<div class="row">
-			<label for="press">Wciśnięcie</label>
+			<label for="press" data-en="Press">Wciśnięcie</label>
 			<select id="press" data-key="press">
-				<option value="none">Nic nie rób</option>
-				<option value="open">Otwórz plik / program / URL</option>
-				<option value="key">Skrót klawiszowy</option>
-				<option value="mute">Wycisz / włącz dźwięk</option>
+				<option value="none" data-en="Do nothing">Nic nie rób</option>
+				<option value="open" data-en="Open file / program / URL">Otwórz plik / program / URL</option>
+				<option value="key" data-en="Keyboard shortcut">Skrót klawiszowy</option>
+				<option value="mute" data-en="Mute / unmute">Wycisz / włącz dźwięk</option>
 			</select>
 		</div>
 		<div class="row" id="mute-row">
-			<label for="muteTarget">Wycisza</label>
+			<label for="muteTarget" data-en="Mutes">Wycisza</label>
 			<select id="muteTarget" data-key="muteTarget">
-				<option value="master">Głośność systemu</option>
-				<option value="mic">Mikrofon</option>
-				<option value="focused">Aktywne okno</option>
+				<option value="master" data-en="System volume">Głośność systemu</option>
+				<option value="mic" data-en="Microphone">Mikrofon</option>
+				<option value="focused" data-en="Focused window">Aktywne okno</option>
 			</select>
 		</div>
 		<div class="row" id="target-row">
-			<label for="target">Cel</label>
+			<label for="target" data-en="Target">Cel</label>
 			<input id="target" data-key="target" type="text" />
 		</div>
-		<p class="hint" id="key-hint">Np. ctrl+shift+m, win+d, media_play_pause. Modyfikatory: ctrl, shift, alt, win.</p>
-		<p class="hint">Postaw na klawiszu pokrętła, żeby zegar był na jego okrągłym ekranie. Kręcenie z akcją „Głośność” na chwilę pokaże poziom, potem wróci zegar.</p>
+		<p class="hint" id="key-hint" data-en="E.g. ctrl+shift+m, win+d, media_play_pause. Modifiers: ctrl, shift, alt, win.">Np. ctrl+shift+m, win+d, media_play_pause. Modyfikatory: ctrl, shift, alt, win.</p>
+		<p class="hint" data-en="Put it on the dial key to show the clock on its round screen. Turning the dial with the “Volume” action briefly shows the level, then the clock returns.">Postaw na klawiszu pokrętła, żeby zegar był na jego okrągłym ekranie. Kręcenie z akcją „Głośność” na chwilę pokaże poziom, potem wróci zegar.</p>
 	</body>
 </html>

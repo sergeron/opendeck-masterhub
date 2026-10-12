@@ -3,26 +3,46 @@
 	<head>
 		<meta charset="utf-8" />
 		<link rel="stylesheet" href="pi.css" />
+		<script src="i18n.js"></script>
 		<script>
 			// Lista czujników przychodzi z pluginu (sendToPropertyInspector) po otwarciu panelu.
 			let socket = null;
 			let context = null;
 			let settings = { sensor: "", label: "", decimals: -1, warn: null };
 			let sensors = [];
+			let error = null;
+			let loaded = false;
 			const $ = (id) => document.getElementById(id);
-			const KINDS = { Temperature: "temperatura", Load: "obciążenie", Power: "moc", Fan: "wentylator", Clock: "zegar", Voltage: "napięcie", Data: "dane", Control: "sterowanie" };
+			const KINDS = {
+				Temperature: ["temperatura", "temperature"],
+				Load: ["obciążenie", "load"],
+				Power: ["moc", "power"],
+				Fan: ["wentylator", "fan"],
+				Clock: ["zegar", "clock"],
+				Voltage: ["napięcie", "voltage"],
+				Data: ["dane", "data"],
+				Control: ["sterowanie", "control"],
+				Framerate: ["klatki", "frame rate"],
+				Frametime: ["czas klatki", "frame time"],
+			};
 
 			function fmt(s) {
 				return s.value === null ? "—" : `${Math.round(s.value * 10) / 10} ${s.unit}`;
 			}
 
+			function kindName(kind) {
+				const k = KINDS[kind];
+				return k ? t(k[0], k[1]) : kind.toLowerCase();
+			}
+
 			function renderList() {
 				const select = $("sensor");
 				const filter = $("filter").value.trim().toLowerCase();
-				select.innerHTML = '<option value="">— wybierz —</option>';
+				select.innerHTML = "";
+				select.appendChild(new Option(t("— wybierz —", "— select —"), ""));
 				const groups = {};
 				for (const s of sensors) {
-					const text = `${s.name} (${KINDS[s.kind] || s.kind.toLowerCase()}) – ${fmt(s)}`;
+					const text = `${s.name} (${kindName(s.kind)}) – ${fmt(s)}`;
 					if (filter && !(s.hardware + " " + text).toLowerCase().includes(filter) && s.id !== settings.sensor) continue;
 					(groups[s.hardware] ||= []).push([s.id, text]);
 				}
@@ -33,6 +53,15 @@
 					select.appendChild(group);
 				}
 				select.value = settings.sensor;
+			}
+
+			function renderStatus() {
+				const status = $("status");
+				if (!loaded) status.textContent = t("Wczytywanie listy czujników…", "Loading the sensor list…");
+				else if (error) {
+					status.textContent =
+						error + t(" – uruchom LibreHardwareMonitor z włączonym serwerem WWW (port 8085).", " – start LibreHardwareMonitor with its web server enabled (port 8085).");
+				} else status.textContent = t(`${sensors.length} czujników`, `${sensors.length} sensors`);
 			}
 
 			function render() {
@@ -77,19 +106,24 @@
 				Object.assign(settings, actionInfo.payload.settings || {});
 				render();
 				socket = new WebSocket("ws://localhost:" + port);
+				I18N.attach(socket, uuid);
 				socket.onopen = () => socket.send(JSON.stringify({ event: registerEvent, uuid }));
 				socket.onmessage = (msg) => {
 					const data = JSON.parse(msg.data);
-					if (data.event !== "sendToPropertyInspector") return;
-					if (data.payload.error) {
-						$("status").textContent = data.payload.error + " – uruchom LibreHardwareMonitor z włączonym serwerem WWW (port 8085).";
-						return;
-					}
+					if (data.event !== "sendToPropertyInspector" || I18N.handle(data.payload)) return;
+					// Błąd LibreHardwareMonitor może przyjść razem z listą (FPS z RivaTunera działa dalej).
+					loaded = true;
+					error = data.payload.error || null;
 					sensors = data.payload.sensors || [];
-					$("status").textContent = `${sensors.length} czujników`;
+					renderStatus();
 					renderList();
 				};
 			}
+
+			I18N.onChange(() => {
+				renderStatus();
+				renderList();
+			});
 
 			window.addEventListener("DOMContentLoaded", () => {
 				$("sensor").addEventListener("change", pickSensor);
@@ -101,31 +135,31 @@
 	</head>
 	<body>
 		<div class="row">
-			<label for="filter">Szukaj</label>
-			<input id="filter" type="text" placeholder="np. temperatura, GPU, fan" />
+			<label for="filter" data-en="Search">Szukaj</label>
+			<input id="filter" type="text" placeholder="np. temperatura, GPU, fan" data-en-placeholder="e.g. temperature, GPU, fan" />
 		</div>
 		<div class="row">
-			<label for="sensor">Czujnik</label>
+			<label for="sensor" data-en="Sensor">Czujnik</label>
 			<select id="sensor"></select>
 		</div>
-		<p class="hint" id="status">Wczytywanie listy czujników…</p>
+		<p class="hint" id="status"></p>
 		<div class="row">
-			<label for="label">Etykieta</label>
-			<input id="label" type="text" placeholder="np. CPU" />
+			<label for="label" data-en="Label">Etykieta</label>
+			<input id="label" type="text" placeholder="np. CPU" data-en-placeholder="e.g. CPU" />
 		</div>
 		<div class="row">
-			<label for="decimals">Po przecinku</label>
+			<label for="decimals" data-en="Decimals">Po przecinku</label>
 			<select id="decimals">
-				<option value="-1">Automatycznie</option>
+				<option value="-1" data-en="Automatic">Automatycznie</option>
 				<option value="0">0</option>
 				<option value="1">1</option>
 				<option value="2">2</option>
 			</select>
 		</div>
 		<div class="row">
-			<label for="warn">Ostrzeżenie od</label>
-			<input id="warn" type="text" placeholder="np. 85 (puste = wyłączone)" />
+			<label for="warn" data-en="Warn from">Ostrzeżenie od</label>
+			<input id="warn" type="text" placeholder="np. 85 (puste = wyłączone)" data-en-placeholder="e.g. 85 (empty = off)" />
 		</div>
-		<p class="hint">Dane z LibreHardwareMonitor (http://127.0.0.1:8085), odświeżane co sekundę. Po przekroczeniu progu tło klawisza robi się czerwone. Wygląd tekstu zmienisz w edytorze tytułu OpenDecka.</p>
+		<p class="hint" data-en="Data from LibreHardwareMonitor (http://127.0.0.1:8085) and FPS from RivaTuner, refreshed every second. Above the threshold the key background turns red. Change the text style in OpenDeck's title editor.">Dane z LibreHardwareMonitor (http://127.0.0.1:8085) i FPS z RivaTunera, odświeżane co sekundę. Po przekroczeniu progu tło klawisza robi się czerwone. Wygląd tekstu zmienisz w edytorze tytułu OpenDecka.</p>
 	</body>
 </html>

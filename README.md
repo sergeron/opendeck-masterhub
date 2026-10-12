@@ -20,18 +20,18 @@ needed. Not affiliated with or endorsed by Cooler Master.
 Every module is a separate OpenDeck device with its own profiles, so re-plugging modules
 doesn't break assignments.
 
-Actions in the **MasterHUB** category (their settings panels are in Polish):
+Actions in the **MasterHUB** category:
 
-- **Podświetlenie (Lighting)** – colour, effect, brightness and speed of the LEDs on the base,
+- **Lighting** – colour, effect, brightness and speed of the LEDs on the base,
   knobs and fader (each LED separately).
-- **Głośność (Volume)** – system, microphone, the focused window's app or chosen apps;
+- **Volume** – system, microphone, the focused window's app or chosen apps;
   absolute on the fader, stepped on knobs / rollers / the dial, press to mute. While changing
   it briefly shows a round level gauge on the dial screen.
-- **Animacja GIF (GIF animation)** – on a key, on the dial screen, stretched across the whole
+- **GIF animation** – on a key, on the dial screen, stretched across the whole
   15xKey module or the same GIF on every key.
-- **Zegar (Clock)** – time and date, e.g. on the dial's round screen. Pressing it can open
+- **Clock** – time and date, e.g. on the dial's round screen. Pressing it can open
   a file / program / URL, send a keyboard shortcut or mute the system / microphone / focused app.
-- **Czujnik (Sensor)** – temperatures, load, power, fans etc. from
+- **Sensor** – temperatures, load, power, fans etc. from
   [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
   On Windows also **FPS and frame time of the focused window** from RivaTuner Statistics Server
   (e.g. bundled with MSI Afterburner) – works without LibreHardwareMonitor.
@@ -45,6 +45,18 @@ Actions in the **MasterHUB** category (their settings panels are in Polish):
   command into a cfg file and press F13, which the game binds to `exec` that file
   (run `exec opendeck_masterhub` once in the CS2 console).
 
+## Languages
+
+The plugin speaks **English and Polish**: settings panels, texts drawn on the screens
+(volume overlay, clock date…) and sensor messages. The language follows the package you
+install and can be changed in any action's settings (**Język / Language**: Auto / Polski /
+English – shared by all actions). Releases contain two packages that differ only in the action
+names shown in OpenDeck's action list (OpenDeck reads them from the manifest and has no Polish
+UI of its own):
+
+- `io.github.opendeck-masterhub-en.streamDeckPlugin` – English names,
+- `io.github.opendeck-masterhub-pl.streamDeckPlugin` – Polish names.
+
 ## Installation
 
 All systems:
@@ -52,7 +64,7 @@ All systems:
 1. Install OpenDeck (2.14 or newer).
 2. **Close the official Cooler Master MasterHUB app** if it's running – both would fight over
    the modules.
-3. Download `io.github.opendeck-masterhub.streamDeckPlugin` from
+3. Download `io.github.opendeck-masterhub-en.streamDeckPlugin` (or `-pl`) from
    [Releases](../../releases) and in OpenDeck choose **Plugins → Install from file**.
 4. The modules show up in OpenDeck's device list within a few seconds.
 
@@ -103,17 +115,24 @@ is supported – the plugin runs host programs through `flatpak-spawn --host`.
 
 ## Building
 
-Requires [Rust](https://rustup.rs) (1.85+). Code comments are in Polish.
+Requires [Rust](https://rustup.rs) (1.85+) and Python 3 for packaging. Code comments are in Polish.
 
 | System | Command | Output |
 |---|---|---|
-| Windows | `cargo build --release`, then `install.ps1` copies it into OpenDeck (close OpenDeck first) | `target/release/opendeck-masterhub.exe` |
+| Windows | `cargo build --release` | `target/release/opendeck-masterhub.exe` |
 | Linux / WSL | `sh build-linux.sh` | `dist/bin/opendeck-masterhub-linux` |
 | macOS | `sh macos/build.sh` (universal binary) | `dist/bin/opendeck-masterhub-mac` |
 
 `python package.py` then bundles whatever binaries exist into
-`dist/io.github.opendeck-masterhub.streamDeckPlugin`. GitHub Actions builds all three systems
-on every push; pushing a `v*` tag publishes a release.
+`dist/io.github.opendeck-masterhub-{en,pl}.streamDeckPlugin` (`--lang en` / `--lang pl` for just one).
+On Windows `install.ps1` builds and installs straight into OpenDeck (close OpenDeck first);
+the action names follow the Windows display language, `-Lang en` / `-Lang pl` overrides it.
+Other systems: `python3 package.py --install --lang en`.
+GitHub Actions builds all three systems on every push; pushing a `v*` tag publishes a release.
+
+Translations: panel texts are in the HTML (Polish) with English in `data-en` attributes
+(`pi/i18n.js`), texts drawn by the plugin use `i18n::tr("polski", "English")`, and the Polish
+action names live in `pl.json` (Stream Deck localization format).
 
 `examples/` contains small hardware and rendering test tools (`cargo run --example …`).
 

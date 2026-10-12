@@ -1,4 +1,7 @@
 //! Sprawdza odczyt czujników z LibreHardwareMonitor tak, jak robi to plugin.
+#[path = "../src/i18n.rs"]
+#[allow(dead_code)]
+mod i18n;
 #[allow(dead_code)]
 #[path = "../src/sensors.rs"]
 mod sensors;

@@ -98,7 +98,7 @@ mod lhm {
         let body = ureq::get(URL)
             .timeout(Duration::from_secs(2))
             .call()
-            .map_err(|e| format!("LibreHardwareMonitor nie odpowiada ({e})"))?
+            .map_err(|e| format!("{} ({e})", crate::i18n::tr("LibreHardwareMonitor nie odpowiada", "LibreHardwareMonitor is not responding")))?
             .into_string()
             .map_err(|e| e.to_string())?;
         let root: Node = serde_json::from_str(&body).map_err(|e| e.to_string())?;
@@ -192,7 +192,7 @@ pub mod rtss {
                 id.into(),
                 Sensor {
                     id: id.into(),
-                    hardware: "RivaTuner (aktywne okno)".into(),
+                    hardware: crate::i18n::tr("RivaTuner (aktywne okno)", "RivaTuner (focused window)").into(),
                     name: name.into(),
                     kind: kind.into(),
                     value,
@@ -201,7 +201,7 @@ pub mod rtss {
             );
         };
         sensor("/rtss/fps", "FPS", "Framerate", reading.map(|r| r.0), "FPS");
-        sensor("/rtss/frametime", "Czas klatki", "Frametime", reading.map(|r| r.1), "ms");
+        sensor("/rtss/frametime", crate::i18n::tr("Czas klatki", "Frame time"), "Frametime", reading.map(|r| r.1), "ms");
     }
 }
 
@@ -302,7 +302,7 @@ mod hwmon {
 
 #[cfg(target_os = "macos")]
 fn fetch() -> Result<HashMap<String, Sensor>, String> {
-    Err("Czujniki nie są obsługiwane na macOS".into())
+    Err(crate::i18n::tr("Czujniki nie są obsługiwane na macOS", "Sensors are not supported on macOS").into())
 }
 
 /// Błąd LibreHardwareMonitor z ostatniego odczytu (czujniki LHM pokazują wtedy "LHM?").
