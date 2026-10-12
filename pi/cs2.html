@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pl">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" href="pi.css" />
+		<script src="common.js"></script>
+		<script>
+			// Nazwa w konsoli, podpis, cena (ceny z CS2 – po aktualizacji gry można je poprawić ręcznie).
+			const ITEMS = [
+				["Karabiny", [["ak47", "AK-47", 2700], ["m4a1", "M4A4", 3100], ["m4a1_silencer", "M4A1-S", 2900], ["galilar", "Galil AR", 1800], ["famas", "FAMAS", 2050], ["sg556", "SG 553", 3000], ["aug", "AUG", 3300]]],
+				["Snajperki", [["awp", "AWP", 4750], ["ssg08", "Scout", 1700], ["g3sg1", "G3SG1", 5000], ["scar20", "SCAR-20", 5000]]],
+				["SMG", [["mac10", "MAC-10", 1050], ["mp9", "MP9", 1250], ["mp7", "MP7", 1500], ["mp5sd", "MP5-SD", 1500], ["ump45", "UMP-45", 1200], ["p90", "P90", 2350], ["bizon", "PP-Bizon", 1400]]],
+				["Ciężkie", [["nova", "Nova", 1050], ["xm1014", "XM1014", 2000], ["mag7", "MAG-7", 1300], ["sawedoff", "Sawed-Off", 1100], ["negev", "Negev", 1700], ["m249", "M249", 5200]]],
+				["Pistolety", [["deagle", "Deagle", 700], ["p250", "P250", 300], ["tec9", "Tec-9", 500], ["fiveseven", "Five-SeveN", 500], ["cz75a", "CZ75", 500], ["elite", "Dualies", 300], ["revolver", "R8", 600]]],
+				["Wyposażenie", [["vesthelm", "Kevlar + hełm", 1000], ["vest", "Kevlar", 650], ["defuser", "Zestaw saper.", 400], ["taser", "Zeus", 200]]],
+				["Granaty", [["flashbang", "Flash", 200], ["smokegrenade", "Smoke", 300], ["hegrenade", "HE", 300], ["molotov", "Molotov", 400], ["incgrenade", "Incendiary", 500], ["decoy", "Decoy", 50]]],
+			];
+			const find = (id) => ITEMS.flatMap(([, items]) => items).find((i) => i[0] === id);
+
+			function onFormChange() {
+				const show = document.getElementById("show").value;
+				const press = document.getElementById("press").value;
+				for (const el of document.querySelectorAll(".buy")) el.classList.toggle("hidden", show !== "buy");
+				for (const el of document.querySelectorAll(".key")) el.classList.toggle("hidden", press !== "key");
+				for (const el of document.querySelectorAll(".console")) el.classList.toggle("hidden", press !== "console");
+			}
+
+			// Wybór przedmiotu podpowiada cenę i podpis.
+			function pickItem() {
+				const item = find(document.getElementById("item").value);
+				if (!item) return;
+				document.getElementById("label").value = item[1];
+				document.getElementById("price").value = item[2];
+				save();
+			}
+
+			function onPluginMessage(payload) {
+				if (payload.status !== undefined) document.getElementById("status").textContent = payload.status;
+				if (payload.cfg !== undefined) document.getElementById("cfg").textContent = payload.cfg;
+			}
+
+			window.addEventListener("DOMContentLoaded", () => {
+				const select = document.getElementById("item");
+				for (const [group, items] of ITEMS) {
+					const g = document.createElement("optgroup");
+					g.label = group;
+					for (const [id, name, price] of items) g.appendChild(new Option(`${name} – $${price}`, id));
+					select.appendChild(g);
+				}
+				select.addEventListener("change", pickItem);
+			});
+		</script>
+	</head>
+	<body>
+		<div class="row">
+			<label for="show">Pokazuje</label>
+			<select id="show" data-key="show">
+				<option value="auto">Podsumowanie (bomba / HP / zakupy / wynik)</option>
+				<option value="bomb">Licznik bomby</option>
+				<option value="health">HP</option>
+				<option value="armor">Pancerz</option>
+				<option value="money">Pieniądze</option>
+				<option value="ammo">Amunicja</option>
+				<option value="kills">Zabójstwa w rundzie</option>
+				<option value="kda">K / D</option>
+				<option value="score">Wynik meczu</option>
+				<option value="buy">Zakup (zielony / czerwony wg kasy)</option>
+			</select>
+		</div>
+		<div class="row buy">
+			<label for="item">Przedmiot</label>
+			<select id="item" data-key="item"><option value="">— wybierz —</option></select>
+		</div>
+		<div class="row buy">
+			<label for="label">Podpis</label>
+			<input id="label" data-key="label" type="text" />
+		</div>
+		<div class="row buy">
+			<label for="price">Cena $</label>
+			<input id="price" data-key="price" type="number" min="0" step="50" />
+		</div>
+
+		<div class="row">
+			<label for="press">Wciśnięcie</label>
+			<select id="press" data-key="press">
+				<option value="none">Nic</option>
+				<option value="key">Naciśnij klawisz (bind w grze)</option>
+				<option value="console">Polecenie w grze (bez bindów)</option>
+			</select>
+		</div>
+		<div class="row key">
+			<label for="key">Klawisz</label>
+			<input id="key" data-key="key" type="text" placeholder="kp_1, f5, ctrl+f1…" />
+		</div>
+		<p class="hint key">Klawisz, do którego w grze jest bind, np. w autoexec: <code>bind kp_end "buy ak47; buy m4a1"</code>.
+			Klawiatura numeryczna: kp_0…kp_9 (jak w CS2).</p>
+		<div class="row console">
+			<label for="command">Polecenie</label>
+			<input id="command" data-key="command" type="text" placeholder="puste = buy &lt;przedmiot&gt;" />
+		</div>
+		<p class="hint console">Jednorazowo: wpisz w konsoli CS2 <code>exec opendeck_masterhub</code> (przypisuje klawisz F13, którego nie ma na zwykłej klawiaturze). Działa, gdy okno gry jest aktywne.</p>
+
+		<div class="row">
+			<label for="leds">Diody</label>
+			<select id="leds" data-key="leds">
+				<option value="events">Reagują na zdarzenia (bomba, flash, niskie HP, koniec rundy)</option>
+				<option value="full">Zdarzenia + kolor drużyny przez całą grę</option>
+				<option value="off">Bez zmian</option>
+			</select>
+		</div>
+		<p class="hint">Na pokrętle obraz jest w pełnej rozdzielczości. Poza meczem akcja pokazuje „—”.</p>
+		<p class="hint" id="status"></p>
+		<p class="hint" id="cfg"></p>
+	</body>
+</html>

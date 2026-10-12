@@ -126,6 +126,49 @@ pub fn ring(size: u32, level: f32, color: Rgb<u8>, track: Rgb<u8>, top: Option<&
     img
 }
 
+/// Kafelek na klawisz: pasek w kolorze akcentu u góry, podpis, duża wartość, opcjonalny dopisek
+/// i pasek postępu na dole. `tint` zabarwia tło (np. zielone / czerwone przy zakupach).
+pub fn tile(
+    size: u32,
+    label: &str,
+    value: &str,
+    sub: Option<&str>,
+    accent: Rgb<u8>,
+    tint: Option<Rgb<u8>>,
+    progress: Option<f32>,
+) -> RgbImage {
+    let bg = tint.map(|t| blend(BG, t, 0.45)).unwrap_or(BG);
+    let mut img = ImageBuffer::from_pixel(size, size, bg);
+    let s = size as f32;
+    let bar = (s * 0.05).round() as u32;
+    for y in 0..bar {
+        for x in 0..size {
+            img.put_pixel(x, y, accent);
+        }
+    }
+    if let Some(p) = progress {
+        let h = (s * 0.07).round() as u32;
+        let filled = (s * p.clamp(0.0, 1.0)).round() as u32;
+        for y in size - h..size {
+            for x in 0..size {
+                img.put_pixel(x, y, if x < filled { accent } else { TRACK });
+            }
+        }
+    }
+    let max_width = s * 0.9;
+    if let Some(font) = REGULAR.as_ref() {
+        centered(&mut img, font, s * 0.16, max_width, s * 0.2, SOFT_TEXT, label);
+    }
+    let value_y = if sub.is_some() { s * 0.52 } else { s * 0.58 };
+    if let Some(font) = BOLD.as_ref() {
+        centered(&mut img, font, s * 0.36, max_width, value_y, TEXT, value);
+    }
+    if let (Some(sub), Some(font)) = (sub, REGULAR.as_ref()) {
+        centered(&mut img, font, s * 0.14, max_width, s * 0.79, DIM_TEXT, sub);
+    }
+    img
+}
+
 /// Zegar: godzina dużą czcionką, opcjonalnie data pod spodem.
 pub fn clock(size: u32, time: &str, date: Option<&str>) -> RgbImage {
     let mut img = ImageBuffer::from_pixel(size, size, BG);

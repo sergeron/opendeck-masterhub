@@ -14,6 +14,7 @@ pub const VOLUME: &str = "io.github.opendeck-masterhub.volume";
 pub const GIF: &str = "io.github.opendeck-masterhub.gif";
 pub const SENSOR: &str = "io.github.opendeck-masterhub.sensor";
 pub const CLOCK: &str = "io.github.opendeck-masterhub.clock";
+pub const CS2: &str = "io.github.opendeck-masterhub.cs2";
 
 // --- Zegar -------------------------------------------------------------------------------------
 
@@ -527,6 +528,33 @@ fn save_led_state() {
 /// Aktualny stan diod dla panelu ustawień: `{ "state": { "knob:1": {...}, ... } }`.
 pub fn led_state_json() -> serde_json::Value {
     serde_json::json!({ "state": &*LED_STATE.lock().unwrap() })
+}
+
+/// Przywraca na wszystkich modułach zapamiętany stan diod (np. po efektach z gry).
+pub fn restore_led_state() {
+    let modules: Vec<(String, Kind)> = MODULES
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, m)| m.kind.led_module().is_some())
+        .map(|(id, m)| (id.clone(), m.kind))
+        .collect();
+    let state = LED_STATE.lock().unwrap().clone();
+    for (id, kind) in modules {
+        let name = Lighting::module_name(kind);
+        let entry = |led: u8| state.get(&format!("{name}:{led}")).cloned().unwrap_or_default();
+        with_writer(&id, |dev| {
+            hub::set_led_speed(dev, kind, entry(1).speed)?;
+            for led in 1..=kind.led_count() {
+                let e = entry(led);
+                let index = Some(led - 1);
+                hub::set_led_color(dev, kind, index, e.rgb())?;
+                hub::set_led_brightness(dev, kind, index, e.brightness)?;
+                hub::set_led_mode(dev, kind, index, e.mode)?;
+            }
+            Ok(())
+        });
+    }
 }
 
 /// Aktywne akcje podświetlenia: kontekst -> (ustawienia, włączone?).

@@ -6,6 +6,7 @@
 
 mod actions;
 mod audio;
+mod cs2;
 mod gif;
 #[cfg(target_os = "linux")]
 mod host;
@@ -219,6 +220,7 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
             let (tx, rx) = unbounded_channel();
             tokio::spawn(dispatcher(rx));
             tokio::spawn(volume_poller());
+            tokio::spawn(cs2_poller());
             thread::spawn(move || watcher(tx));
             log::info!("Plugin MasterHUB gotowy");
         }
@@ -363,6 +365,30 @@ async fn volume_poller() {
     }
 }
 
+/// Odświeża akcje CS2: co 100 ms w trakcie gry (licznik bomby), co sekundę poza nią (zegar).
+async fn cs2_poller() {
+    let mut tick = 0u32;
+    loop {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        tick += 1;
+        if !cs2::active() || (!cs2::busy() && tick % 10 != 0) {
+            continue;
+        }
+        let Ok(images) = blocking(cs2::updates).await else { continue };
+        if images.is_empty() {
+            continue;
+        }
+        let mut lock = OUTBOUND_EVENT_MANAGER.lock().await;
+        if let Some(out) = lock.as_mut() {
+            for (context, image) in images {
+                if let Err(e) = out.set_image(context, Some(image), None).await {
+                    log::warn!("CS2: {e}");
+                }
+            }
+        }
+    }
+}
+
 /// Uruchamia animację GIF; po przesłaniu pliku zapisuje w akcji już tylko jego ścieżkę.
 async fn apply_gif(
     out: &mut OutboundEventManager,
@@ -396,6 +422,7 @@ impl openaction::ActionEventHandler for ActionEventHandler {
                 sync_sensors(out, false).await?;
             }
             actions::CLOCK => actions::clock_register(&event.context, &event.device, &settings),
+            actions::CS2 => cs2::register(&event.context, &event.device, &settings),
             _ => {}
         }
         Ok(())
@@ -412,6 +439,7 @@ impl openaction::ActionEventHandler for ActionEventHandler {
                 let list = blocking(actions::sensor_list_json).await?;
                 out.send_to_property_inspector(event.context, list).await?;
             }
+            actions::CS2 => out.send_to_property_inspector(event.context, cs2::status_json()).await?,
             _ => {}
         }
         Ok(())
@@ -424,6 +452,12 @@ impl openaction::ActionEventHandler for ActionEventHandler {
             actions::SENSOR => actions::sensor_unregister(&event.context),
             actions::CLOCK => {
                 if let Some(device) = actions::clock_unregister(&event.context) {
+                    out.rerender_images(device).await?;
+                }
+            }
+            actions::CS2 => {
+                let context = event.context.clone();
+                if let Some(device) = blocking(move || cs2::unregister(&context)).await? {
                     out.rerender_images(device).await?;
                 }
             }
@@ -460,6 +494,10 @@ impl openaction::ActionEventHandler for ActionEventHandler {
                 sync_sensors(out, false).await?;
             }
             actions::CLOCK => actions::clock_register(&event.context, &event.device, &settings),
+            actions::CS2 => {
+                cs2::register(&event.context, &event.device, &settings);
+                out.send_to_property_inspector(event.context, cs2::status_json()).await?;
+            }
             _ => {}
         }
         Ok(())
@@ -485,6 +523,10 @@ impl openaction::ActionEventHandler for ActionEventHandler {
                 blocking(move || actions::clock_press(&settings)).await?;
                 // Wyciszenie z zegara – odświeżamy też tytuły akcji Głośność.
                 sync_volume(out, false).await?;
+            }
+            actions::CS2 => {
+                let settings = event.payload.settings;
+                blocking(move || cs2::press(&settings)).await?;
             }
             _ => {}
         }

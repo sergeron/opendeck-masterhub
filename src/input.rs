@@ -9,3 +9,4 @@ mod imp;
 mod imp;
 
 pub use imp::send_combo;
+pub use imp::send_combo_held;

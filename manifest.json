@@ -1,6 +1,6 @@
 {
   "Name": "Cooler Master MasterHUB",
-  "Description": "Unofficial device support for Cooler Master MasterHUB modules (15xKey, 3xKnob, 2xRoller, 1xDial, 5xFader), with lighting, volume, animated GIF, hardware sensor and clock actions",
+  "Description": "Unofficial device support for Cooler Master MasterHUB modules (15xKey, 3xKnob, 2xRoller, 1xDial, 5xFader), with lighting, volume, animated GIF, hardware sensor, clock and Counter-Strike 2 actions",
   "Author": "MasterHUB community",
   "Version": "0.6.2",
   "PluginUUID": "io.github.opendeck-masterhub",
@@ -105,6 +105,23 @@
       ],
       "SupportedInMultiActions": false,
       "PropertyInspectorPath": "pi/clock.html"
+    },
+    {
+      "UUID": "io.github.opendeck-masterhub.cs2",
+      "Name": "CS2",
+      "Tooltip": "Counter-Strike 2: licznik bomby, HP, kasa, amunicja, zakupy; diody reagują na grę",
+      "Icon": "icons/cs2",
+      "States": [
+        {
+          "Image": "icons/cs2",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": false,
+      "PropertyInspectorPath": "pi/cs2.html"
     }
   ],
   "DeviceNamespace": "mh",

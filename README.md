@@ -35,6 +35,15 @@ Actions in the **MasterHUB** category (their settings panels are in Polish):
   [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
   On Windows also **FPS and frame time of the focused window** from RivaTuner Statistics Server
   (e.g. bundled with MSI Afterburner) – works without LibreHardwareMonitor.
+- **CS2** – Counter-Strike 2 data through the official Game State Integration (no game memory
+  reading): bomb and defuse timer, HP, armor, money, ammo, kills, K/D, score, buy buttons
+  (green when you can afford the item). The "summary" view picks whatever matters right now.
+  The LEDs on the base, knobs and fader react to the game (bomb, flash, low HP, round end).
+  The plugin writes `gamestate_integration_opendeck_masterhub.cfg` into the game's
+  `…/Counter-Strike Global Offensive/game/csgo/cfg` folder itself – restart CS2 if it was running.
+  Buy buttons either press a key you have bound in the game, or (no binds needed) write the
+  command into a cfg file and press F13, which the game binds to `exec` that file
+  (run `exec opendeck_masterhub` once in the CS2 console).
 
 ## Installation
 
