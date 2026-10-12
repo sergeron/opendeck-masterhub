@@ -215,7 +215,7 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
             tokio::spawn(dispatcher(rx));
             tokio::spawn(volume_poller());
             thread::spawn(move || watcher(tx));
-            log::info!("Plugin MasterHUB gotowy");
+            log::info!("Plugin MasterHUB {} gotowy", env!("CARGO_PKG_VERSION"));
         }
         Ok(())
     }

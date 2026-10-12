@@ -2,6 +2,7 @@
 
 use base64::Engine;
 use image::{DynamicImage, ImageBuffer, Rgb, RgbImage, codecs::jpeg::JpegEncoder, imageops::FilterType};
+use std::sync::LazyLock;
 
 fn decode(data_url: &str) -> Result<DynamicImage, String> {
     let (header, data) = data_url.split_once(',').ok_or("niepoprawny data URL")?;
@@ -22,19 +23,40 @@ pub enum DialFeedback {
 #[derive(PartialEq)]
 pub struct RingFeedback {
     pub level: f32,
+    /// Odczytany tekst 0..100%, nigdy wartość wyliczona z długości paska.
+    pub percent: Option<u8>,
     value: image::GrayImage,
     title: Option<image::GrayImage>,
 }
 
 impl RingFeedback {
-    /// Wartość tekstowa jest potwierdzona przez HA; animujemy tylko pierścień.
+    /// Rozpoznany procent rysujemy tą samą czcionką co głośność, w rozdzielczości LCD.
     pub fn render(&self, size: u32, level: f32) -> RgbImage {
-        let mut dial = crate::render::gauge(size, level, false, "", "");
-        paste_text(&mut dial, &self.value, size * 64 / 100, size * 26 / 100, size * 47 / 100);
+        let native = self.percent.filter(|_| crate::render::has_text_font());
+        let text = native.map(|percent| format!("{percent}%")).unwrap_or_default();
+        let mut dial = crate::render::gauge(size, level, false, &text, "");
+        if native.is_none() {
+            paste_text(&mut dial, &self.value, size * 64 / 100, size * 26 / 100, size * 47 / 100);
+        }
         if let Some(title) = &self.title {
-            paste_text(&mut dial, title, size * 52 / 100, size * 9 / 100, size * 71 / 100);
+            // Małego podpisu nie powiększamy: unikamy kolejnego rozmycia JPEG.
+            paste_text(&mut dial, title, (size * 52 / 100).min(title.width()), (size * 9 / 100).min(title.height()), size * 71 / 100);
         }
         dial
+    }
+}
+
+impl DialFeedback {
+    /// Różnice szumu JPEG i niewyświetlana ikona nie wymagają nowego zapisu LCD.
+    pub fn same_visual(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ring(a), Self::Ring(b)) => {
+                a.level == b.level && a.percent == b.percent && a.title == b.title && (a.percent.is_some() || a.value == b.value)
+            }
+            (Self::Image(a), Self::Image(b)) => a == b,
+            (Self::Incomplete, Self::Incomplete) => true,
+            _ => false,
+        }
     }
 }
 
@@ -68,9 +90,57 @@ pub fn dial_feedback_region(data_url: &str, size: u32, row: Option<(u8, u8)>) ->
     let rgb = flatten(img.clone());
     let Some(level) = b1_level(&rgb) else { return Ok(DialFeedback::Image(fit_rgb(&img, size, false))) };
     let Some(value) = text_crop(&rgb, (76, 40, 108, 32)) else { return Ok(DialFeedback::Incomplete) };
-    // Procent pochodzi z obrazu HA, nie z zaokrąglenia szerokości paska. Dzięki temu
-    // zachowujemy dokładną wartość i nie próbujemy rozpoznawać cyfr przez OCR.
-    Ok(DialFeedback::Ring(RingFeedback { level, value, title: text_crop(&rgb, (16, 10, 136, 24)) }))
+    // Rozpoznajemy tylko znany zapis procentu w $B1. Niepewne i niestandardowe napisy
+    // zachowują oryginalną maskę; długość paska nie wpływa na odczytaną liczbę.
+    let percent = recognize_percent(&value);
+    Ok(DialFeedback::Ring(RingFeedback { level, percent, value, title: text_crop(&rgb, (16, 10, 136, 24)) }))
+}
+
+struct PercentTemplate {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+static PERCENT_TEMPLATES: LazyLock<Vec<PercentTemplate>> = LazyLock::new(|| {
+    let atlas = image::load_from_memory(include_bytes!("../assets/feedback/percent-templates.png")).unwrap().to_rgb8();
+    (0..1211)
+        .map(|index| {
+            let mask = text_crop(&atlas, template_rect(index)).unwrap();
+            let pixels = image::imageops::resize(&mask, 64, 32, FilterType::Triangle).into_raw();
+            PercentTemplate { width: mask.width(), height: mask.height(), pixels }
+        })
+        .collect()
+});
+
+fn template_rect(index: u32) -> (u32, u32, u32, u32) {
+    ((index % 10) * 108, (index / 10) * 32, 108, 32)
+}
+
+/// Dopasowanie całego napisu, łącznie ze znakiem %. Wzorce spoza 0..100 i z zerami
+/// wiodącymi są klasami odrzucenia. Dzięki temu np. 101% nie staje się 100%.
+fn recognize_percent(mask: &image::GrayImage) -> Option<u8> {
+    let pixels = image::imageops::resize(mask, 64, 32, FilterType::Triangle).into_raw();
+    let (mut best, mut second, mut index) = (f32::INFINITY, f32::INFINITY, 0);
+    for (i, template) in PERCENT_TEMPLATES.iter().enumerate() {
+        if mask.width().abs_diff(template.width) > 2 || mask.height().abs_diff(template.height) > 2 {
+            continue;
+        }
+        let (mut difference, mut ink) = (0u32, 0u32);
+        for (&a, &b) in pixels.iter().zip(&template.pixels) {
+            difference += a.abs_diff(b) as u32;
+            ink += a.max(b) as u32;
+        }
+        let score = difference as f32 / ink.max(1) as f32;
+        if score < best {
+            second = best;
+            best = score;
+            index = i;
+        } else {
+            second = second.min(score);
+        }
+    }
+    (index <= 100 && best <= 0.12 && second - best >= 0.025).then_some(index as u8)
 }
 
 /// `$B1` OpenDecka: płótno 200×100, biały pasek na ciemnoszarym tle w [76,74,108,12].
@@ -255,7 +325,9 @@ mod tests {
             let level = b1_level(&strip).unwrap_or_else(|| panic!("nierozpoznany $B1: {percent}%"));
             assert!((level * 100.0 - percent as f32).abs() <= 1.0, "{percent}%: {level}");
             let url = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(jpeg));
-            let dial = dial_feedback(&url, 240).unwrap().render(240);
+            let feedback = dial_feedback(&url, 240).unwrap();
+            assert!(matches!(&feedback, DialFeedback::Ring(ring) if ring.percent == Some(percent)), "nieczytelny procent {percent}%");
+            let dial = feedback.render(240);
             assert_eq!(dial.dimensions(), (240, 240));
             // Lewy dolny punkt należy do ścieżki pierścienia, poza wyciętym tekstem.
             let expected = if percent > 63 { Rgb([124, 58, 237]) } else { crate::render::TRACK };
@@ -331,7 +403,6 @@ mod tests {
     #[test]
     fn value_is_taken_from_text_even_when_indicator_differs() {
         let mut img = image::load_from_memory(include_bytes!("../tests/fixtures/encoder-b1/b1-55.jpg")).unwrap().to_rgb8();
-        let value = text_crop(&img, (76, 40, 108, 32)).unwrap();
         // Celowo inny wskaźnik: liczba na LCD nadal musi pochodzić z tekstu HA.
         for x in 76..184 {
             for y in 79..=80 {
@@ -339,11 +410,41 @@ mod tests {
             }
         }
         let dial = dial_feedback(&png_url(img.into()), 240).unwrap().render(240);
-        let mut expected = crate::render::gauge(240, 0.0, false, "", "");
-        paste_text(&mut expected, &value, 240 * 64 / 100, 240 * 26 / 100, 240 * 47 / 100);
+        let expected = crate::render::gauge(240, 0.0, false, "55%", "");
         assert!(
             image::imageops::crop_imm(&dial, 40, 76, 160, 70).to_image()
                 == image::imageops::crop_imm(&expected, 40, 76, 160, 70).to_image()
         );
+    }
+
+    #[test]
+    fn canonical_percent_text_is_read_independently_of_bar_at_jpeg_qualities() {
+        let atlas = image::load_from_memory(include_bytes!("../assets/feedback/percent-templates.png")).unwrap().to_rgb8();
+        let base = image::load_from_memory(include_bytes!("../tests/fixtures/encoder-b1/b1-55.jpg")).unwrap().to_rgb8();
+        for quality in [50, 75, 95] {
+            for percent in 0..=100 {
+                let mut strip = base.clone();
+                let (x, y, w, h) = template_rect(percent);
+                let value = image::imageops::crop_imm(&atlas, x, y, w, h).to_image();
+                image::imageops::overlay(&mut strip, &value, 76, 40);
+                let bytes = crate::render::jpeg_with_quality(&strip, quality);
+                let rgb = image::load_from_memory(&bytes).unwrap().to_rgb8();
+                let read = recognize_percent(&text_crop(&rgb, (76, 40, 108, 32)).unwrap());
+                if quality >= 75 {
+                    assert_eq!(read, Some(percent as u8), "{percent}%, JPEG {quality}");
+                } else if let Some(read) = read {
+                    assert_eq!(read, percent as u8, "nie wolno pomylić cyfry przy JPEG {quality}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn percent_out_of_range_and_leading_zeros_are_not_replaced_with_a_native_number() {
+        let atlas = image::load_from_memory(include_bytes!("../assets/feedback/percent-templates.png")).unwrap().to_rgb8();
+        for index in [101, 102, 109, 110, 200, 333, 555, 999, 1000, 1009, 1010, 1109, 1110, 1115, 1210] {
+            let mask = text_crop(&atlas, template_rect(index)).unwrap();
+            assert_eq!(recognize_percent(&mask), None, "wzorzec {index}");
+        }
     }
 }

@@ -36,36 +36,33 @@ Actions in the **MasterHUB** category (their settings panels are in Polish):
   On Windows also **FPS and frame time of the focused window** from RivaTuner Statistics Server
   (e.g. bundled with MSI Afterburner) – works without LibreHardwareMonitor.
 
-## LCD encoder feedback (0.6.3)
+## LCD encoder feedback (0.6.4)
 
-The **1xDial** LCD displays feedback from any MasterHUB encoder. An action on the
-LCD dial uses its own screen; **any of the three knobs or either roller** sends its
-feedback to the connected LCD dials. Each device and encoder position has separate
-feedback memory. The most recently rotated encoder owns the shared screen, so a
-late response from another encoder cannot replace its value.
+The LCD dial, all three knobs and both rollers can provide feedback on the connected
+LCDs. Feedback memory is separate for each device and encoder position. The latest
+physically rotated encoder owns the shared screen; profile refreshes keep the clock.
 
-The standard white **`$B1`** bar becomes a **240×240 round gauge**. The percentage
-and title come from the original feedback image. Other layouts keep their proportions.
-An empty `$B1` frame caused by a layout reset is skipped until its value arrives.
-Profile refreshes without a rotation update memory without opening the overlay.
-After about **1.5 seconds**, the clock or latest background image returns. An awaited
-HA response can arrive up to **5 seconds** after rotation; completed interactions
-cannot be reopened by profile refreshes.
+Standard **`$B1`** percentages **0–100%** are recognized from the original value text
+and drawn locally at **240×240**, using the same system font as the volume gauge.
+The number comes from the confirmed HA image, independently of the bar length.
+Uncertain or custom text keeps its original image. The original title is preserved
+at its pixel size; it is no longer enlarged. **Rotation never predicts a new value.**
 
-One worker per LCD sends feedback, the clock, key images and GIF frames. It selects
-the latest frame, checks its revision after acquiring the HID writer and retries
-failed uploads. **Each confirmed value uses one frame**, without ring interpolation.
-This reduces USB traffic and avoids displaying intermediate ring levels. The plugin
-keeps the latest pending update rather than building a queue behind slow USB writes.
+A separate decoder prepares and caches the latest JPEG per encoder while the LCD
+writer may be busy. Matching visual feedback reuses the prepared image. The LCD
+worker no longer waits the extra 8 ms before uploading it, and ring geometry is
+cached. Optimized baseline JPEG 4:4:4 at quality 80 reduces USB traffic; volume
+and clock images keep their existing encoder. The new encoder is the pure Rust
+`jpeg-encoder` crate, with no extra system libraries.
 
-Keep the HA brightness step at **±5%** and feedback **`$B1`**, assigning the action
-to any dial, knob or roller encoder. Set **Tick bucket size = 50 ms** in the HA plugin.
-The **Zegar (Clock)** action stays on the LCD dial's key. MasterHUB forwards each
-rotary detent as one tick and displays the percentage supplied by HA. The default
-HA template truncates brightness percentages; the [configuration guide](docs/ha-lcd-feedback.md)
-includes a display template rounded to 5% when that is the desired presentation.
+Assign the HA action to any dial, knob or roller encoder, keep **±5%**, **`$B1`** and
+**Tick bucket size = 50 ms**, and put **Zegar (Clock)** on the LCD key. The screen
+shows the percentage actually sent by HA. The [configuration and timing guide](docs/ha-lcd-feedback.md)
+explains raw percentage rounding and the new `masterhub.log` measurements for
+incoming feedback, preparation, writer lock and HID transfer.
 
-USB timing and actual HA feedback still need a check on the physical device.
+A faster local renderer cannot remove the wait for a confirmed HA response.
+USB and physical LCD timing still need a hardware check.
 
 ## Installation
 
@@ -125,7 +122,7 @@ is supported – the plugin runs host programs through `flatpak-spawn --host`.
 
 ## Building
 
-Requires [Rust](https://rustup.rs) (1.85+). Code comments are in Polish.
+Requires [Rust](https://rustup.rs) (1.89+). Code comments are in Polish.
 
 | System | Command | Output |
 |---|---|---|

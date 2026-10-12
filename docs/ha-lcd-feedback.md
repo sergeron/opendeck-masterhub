@@ -1,71 +1,65 @@
-# Feedback Home Assistant na LCD MasterHUB — 0.6.3
+# Feedback Home Assistant na LCD MasterHUB — 0.6.4
 
-Wersja 0.6.3 rozszerza feedback na wszystkie enkodery i usuwa dodatkowe klatki
-animacji, które zwiększały ruch USB. [Opis poprzedniej wersji 0.6.2](ha-lcd-feedback-0.6.2.md)
-pozostaje jako dokumentacja historyczna.
+Procent standardowego `$B1` jest rysowany lokalnie w 240×240 tą samą czcionką,
+co głośność. Obie ścieżki wysyłają JPEG; LCD nie otrzymuje osobnej komendy tekstowej.
+Wcześniej procent HA był powiększany z wycinka małego JPEG 200×100. To powodowało
+pikselizację i utratę ostrości.
 
-## Źródło feedbacku i ekran
+**Liczba pozostaje wyłącznie potwierdzonym procentem z HA.** Obrót pokazuje ostatni
+potwierdzony stan, a nowa liczba pojawia się po odebraniu nowego feedbacku. Nie ma
+przewidywania ±5% ani obliczania tekstu z przybliżonej długości paska.
 
-- Akcja na enkoderze pokrętła LCD wyświetla feedback na tym pokrętle.
-- Akcja na dowolnym knobie, rollerze lub faderze wyświetla feedback na podłączonych
-  pokrętłach LCD. Bez podłączonego LCD nie ma ekranu, na którym można go pokazać.
-- Pamięć i interakcja są przypisane do pary **urządzenie + pozycja enkodera**.
-- Ostatni fizycznie obracany enkoder wybiera źródło dla wspólnego ekranu. Odpowiedzi
-  innego enkodera aktualizują jego pamięć i nie przejmują ekranu.
-- Feedback całego rzędu jest dzielony na pozycje przed konwersją `$B1`.
-- Pusty obraz, zmiana profilu lub odłączenie modułu usuwa dane danego źródła.
-  Wyczyszczenie jednej pozycji nie czyści innych ani własnej nakładki głośności.
+[Historia 0.6.3](ha-lcd-feedback-0.6.3.md) · [Historia 0.6.2](ha-lcd-feedback-0.6.2.md)
 
-`read_loop()` nadal przekazuje fizyczne ticki do OpenDecka. Dla pokrętła, knobów
-i rollerów pojedynczy raport skoku daje tick `+1` albo `-1`; MasterHUB nie mnoży
-go przez 5. Krok jasności pozostaje ustawieniem akcji HA. Fader przekazuje zmianę
-pozycji, tak jak wcześniej.
+## Ostrość i rozpoznawanie wartości
 
-## Aktualizacje LCD
+Dla standardowego białego `$B1` plugin rozpoznaje cały napis `0%`…`100%` z pola
+wartości `[76,40,108,32]`. Wzorce pochodzą z tego samego renderera Noto Sans, który
+używa OpenDeck. Porównanie obejmuje znak `%`, wymiary i maskę całego napisu.
+Wymagany jest mały błąd oraz jednoznaczna przewaga nad następnym dopasowaniem.
 
-Feedback, zegar, zwykłe obrazy i GIF przechodzą przez **jeden worker na LCD**.
-Wybór klatki następuje przed zapisem, a sprawdzenie jej rewizji również **po
-przejęciu blokady HID**, tuż przed pierwszym raportem obrazu. Zegar lub GIF nie może
-przez osobną ścieżkę nadpisać aktywnego feedbacku.
+Wzorce spoza zakresu, ujemne oraz z zerami wiodącymi są klasami odrzucenia.
+Niepewne i niestandardowe wartości zachowują oryginalną maskę. To ograniczone
+rozpoznawanie znanego zapisu procentu, bez modelu OCR ani usługi sieciowej.
+Po rozpoznaniu liczba jest rysowana czcionką systemową (Windows: Segoe UI/Arial;
+Linux: DejaVu/Noto/Liberation). Tytuł jest zachowany jako obraz bez powiększania.
+Brak czcionki systemowej również powoduje zachowanie oryginalnego tekstu.
 
-Jedna potwierdzona wartość HA powoduje wysłanie jednej klatki. Usunięto animację
-poziomów pośrednich. Każdy nowy cel pokazuje potwierdzony tekst oraz pierścień
-odczytany z tego samego obrazu. Feedback używa JPEG jakości 80. Pozostałe własne
-obrazy zachowują jakość 95.
+Puste pole wartości po `setFeedbackLayout` nadal jest pomijane do nadejścia
+właściwego `setFeedback`. Inne układy są dopasowywane z zachowaniem proporcji.
+Pochodzenie, licencje i generator atlasu: [assets/feedback](../assets/feedback/README.md).
 
-Odstęp między początkami zapisów wynosi co najmniej 33 ms. Klatki napływające
-jednocześnie są zbierane przez 8 ms. Przy wolnym USB worker kończy rozpoczęty obraz
-i wybiera najnowszy oczekujący obraz. Nie tworzy kolejki starych procentów.
-Jeśli HID zgłosi błąd, aktualna klatka jest ponawiana po 100 ms, również gdy kolejny
-feedback zawiera identyczny procent. Nowsza klatka zastępuje oczekującą na ponowienie.
-Przy odłączonym ekranie próby przywrócenia tła kończą się po trzech nieudanych zapisach.
+## Kolejka i zapis ekranu
 
-Nakładka znika po 1500 ms od ostatniego obrotu lub nowego feedbacku. Oczekiwana
-odpowiedź HA może nadejść do 5 s od obrotu, także po powrocie zegara. Po otrzymaniu
-i wyświetleniu odpowiedzi odświeżenia zamkniętej interakcji nie otwierają nakładki.
+Jeden dekoder przygotowuje najnowszy feedback każdego enkodera niezależnie od
+zajętego HID. Obracany enkoder ma pierwszeństwo przed odświeżeniami innych profili.
+Gotowy JPEG jest wspólny dla docelowych LCD i pozostaje w pamięci. Obrót oraz
+ponowienie błędu HID nie dekodują ponownie tego samego obrazu.
 
-### Reset układu `$B1`
+Jeden worker na LCD nadal wybiera między feedbackiem, zegarem, klawiszem i GIF.
+Rewizja jest sprawdzana po przejęciu blokady HID. Wyczyszczenie lub zmiana profilu
+unieważnia również trwającą konwersję; stary wynik nie wraca do nowego przypisania.
+Nie tworzy się kolejka nieaktualnych procentów. Identyczny wynik wizualny nie jest
+ponownie wysyłany, nawet jeśli JPEG wejściowy lub niewyświetlana ikona się zmieniły.
 
-Plugin HA wysyła `setFeedbackLayout`, a następnie `setFeedback`. OpenDeck po zmianie
-układu odrysowuje go jeszcze bez właściwej wartości. W 0.6.2 taki obraz mógł zastąpić
-procent i trafić do pamięci. W 0.6.3 rozpoznany `$B1` z pustym obszarem wartości jest
-traktowany jako niepełny feedback: worker pomija klatkę i zachowuje ostatni poprawny
-stan, aż nadejdzie rzeczywista wartość. Pozostałe układy nadal są dopasowywane do LCD
-z zachowaniem proporcji.
+Usunięto dodatkowe oczekiwanie 8 ms przed zapisem. Maksymalna częstotliwość początku
+zapisów pozostaje ograniczona odstępem 33 ms. Geometria pierścienia jest obliczana
+raz i ponownie wykorzystywana. Nieudana klatka jest ponawiana po 100 ms.
 
-Źródła: [wysyłanie layoutu i feedbacku przez HA](https://github.com/cgiesche/streamdeck-homeassistant/blob/7322fe0eac5279b3a09dcd0f4026c7b43df0636c/src/components/PluginComponent.vue),
-[odrysowanie layoutu przez OpenDeck](https://github.com/nekename/OpenDeck/blob/66db15d9d5d41597772a4f209cd6a93b498fc7df/src-tauri/src/events/inbound/states.rs).
+Feedback używa **baseline JPEG 4:4:4, jakość 80, optymalizowane tablice Huffmana**.
+Dodano jedną zależność `jpeg-encoder` 0.7.1 w czystym Rust, bez bibliotek systemowych.
+Nie używa się progresywnego JPEG ani kodowania 4:2:0. Głośność i zegar zachowują
+swój dotychczasowy encoder jakości 95.
 
-## Konfiguracja i liczba na LCD
+## Moduły i konfiguracja
 
-Przypisz istniejącą akcję HA do dowolnego enkodera, ustaw krok jasności ±5%,
-feedback `$B1` i **Tick bucket size = 50 ms**. Zegar przypisz do klawisza modułu LCD.
-Kod OpenDecka i pluginu HA nie jest zmieniany przez tę paczkę.
+Pokrętło LCD używa własnego ekranu. Każdy knob, roller lub fader korzysta z
+podłączonych LCD. Pamięć jest osobna dla pary urządzenie + pozycja, a ostatnio
+obracany enkoder wybiera źródło wspólnego ekranu. Odświeżenie bez obrotu nie otwiera
+nakładki. Po 1,5 s wraca zegar; na oczekiwaną odpowiedź plugin czeka do 5 s.
 
-MasterHUB otrzymuje gotowy obraz `setImage`, a nie atrybut `brightness`. Nie odczytuje
-cyfr przez OCR i nie generuje przewidywanej liczby po samym obrocie. LCD pokazuje
-tekst potwierdzony przez HA. Jeżeli HA pominie odpowiedzi pośrednie, LCD przechodzi
-do ostatniej potwierdzonej wartości.
+Zachowaj akcję HA z krokiem ±5%, feedback `$B1` i **Tick bucket size = 50 ms**.
+Zegar przypisz do klawisza LCD. Kod OpenDecka oraz pluginu HA nie jest zmieniany.
 
 Domyślny [szablon HA dla światła](https://github.com/cgiesche/streamdeck-homeassistant/blob/7322fe0eac5279b3a09dcd0f4026c7b43df0636c/public/config/default-display-config.yml)
 liczy `brightness / 255 * 100` i ucina część ułamkową przez `int`. Dlatego liczba
@@ -93,10 +87,28 @@ Szablon zaokrągla potwierdzony stan do najbliższych 5%, a jego liczbę i pasek
 MasterHUB wyświetla spójnie. Nie zastosowano go automatycznie do konfiguracji HA
 użytkownika: w tym repozytorium nie ma instalacji ani ustawień tej zewnętrznej akcji.
 
+## Jak sprawdzić opóźnienie
+
+Po ponownym uruchomieniu OpenDecka `masterhub.log` powinien zawierać
+`Plugin MasterHUB 0.6.4 gotowy`. Pozwala to sprawdzić również wersję faktycznie
+uruchomionego EXE, a nie tylko manifestu.
+
+Na początku interakcji pojawiają się dwa pomiary:
+
+- `feedback po ... ms od obrotu; przygotowanie ... ms; JPEG ... B / ... raportów`:
+  czas od ostatniego obrotu do otrzymania obrazu z OpenDecka oraz lokalna konwersja;
+- `LCD kolejka ... ms; blokada HID ... ms; zapis ... ms`: oczekiwanie gotowej klatki,
+  przejęcie writera i faktyczny czas wysyłania obrazu.
+
+Pierwszy pomiar obejmuje plugin HA, komunikację ze światłem oraz renderowanie
+OpenDecka. Bez identyfikatora żądania nie jest dokładnym pomiarem jednej usługi HA.
+Lokalna poprawka nie usuwa tego oczekiwania: zgodnie z wybranym zachowaniem ekran
+pokazuje wyłącznie potwierdzone dane. Jeśli odpowiedź nadal przychodzi wolno, log
+pozwala wskazać, czy problem jest przed MasterHUBem, w przygotowaniu czy w USB.
+
 ## Budowanie i instalacja
 
-Sprawdzone środowisko: Debian 12, Rust/Cargo 1.92.0 i lokalny MinGW-w64 GCC 12.2.
-Z zainstalowanym Rustem i MinGW:
+Rust/Cargo **1.89+**, sprawdzone z 1.92.0 na Debianie 12 i MinGW-w64 GCC 12.2.
 
 ```sh
 rustup target add x86_64-pc-windows-gnu
@@ -106,22 +118,26 @@ sh build-linux.sh
 python3 package.py
 ```
 
-Skrypty używają `$HOME/.cache/opendeck-masterhub-target`, chyba że ustawisz
-`CARGO_TARGET_DIR`. Paczka to `dist/io.github.opendeck-masterhub.streamDeckPlugin`.
-Zainstaluj ją przez **Plugins → Install from file** i ponownie uruchom OpenDeck.
-Wersja manifestu powinna wynosić **0.6.3**.
+Zainstaluj `dist/io.github.opendeck-masterhub-0.6.4.streamDeckPlugin` przez
+**Plugins → Install from file**, następnie uruchom ponownie OpenDeck.
+Źródła: `dist/opendeck-masterhub-0.6.4-source.zip`.
 
-Źródła: `dist/opendeck-masterhub-0.6.3-source.zip`. Archiwum zawiera assety, lockfile,
-testy i obrazy referencyjne; nie zawiera `.git`, kompilacji ani binariów.
+Podgląd faktycznej kompresji feedbacku, bez urządzenia:
 
-## Weryfikacja
+```sh
+cargo run --locked --release --example feedback_preview -- \
+  tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55-0.6.4.png
+```
 
-33 testy obejmują wszystkie pozycje pokrętła, knobów i rollerów; wybór LCD; izolację
-enkoderów; odświeżenia profilu; odpowiedź po 1500 ms; przerwanie starszego feedbacku;
-reset layoutu bez procentu; serię 50% ↔ 55% przy wolnym USB bez klatek pośrednich;
-ponawianie błędu HID; zastąpienie obrazu po oczekiwaniu na writer; obrót podczas
-przywracania zegara; GIF i zegar przez wspólny worker; oraz odczyt `$B1` i zachowanie
-tekstu.
+## Weryfikacja i ograniczenia
 
-Testy symulują błędy i opóźnienia. Rzeczywista przepustowość USB, odpowiedzi HA i
-zachowanie fizycznego LCD wymagają sprawdzenia na urządzeniu.
+43 testy obejmują między innymi wszystkie 0–100% przy JPEG 75/95, zachowanie liczby
+przy innym pasku, odrzucenie wartości ujemnych/spoza zakresu/zer wiodących,
+przygotowanie podczas blokady HID, wybór najnowszej klatki, brak przewidywania
+po obrocie, deduplikację wyglądu, usunięcie starego wyniku po zmianie profilu,
+obsługę knobów/rollerów oraz poprawne dekodowanie zoptymalizowanego JPEG.
+
+Próbka 55% w tym środowisku: **8836 → 8245 B**, czyli **29 → 27 raportów HID**.
+To pomiar wielkości klatki, nie obietnica takiego samego zysku czasu USB.
+Ostrość sprawdzono na gotowych obrazach; rzeczywista latencja HA, USB i fizycznego
+LCD nadal wymaga pomiaru na urządzeniu.

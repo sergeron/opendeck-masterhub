@@ -36,36 +36,32 @@ Akcje w kategorii **MasterHUB**:
   Na Windows także **FPS i czas klatki aktywnego okna** z RivaTuner Statistics Server
   (np. razem z MSI Afterburnerem) – działa bez LibreHardwareMonitor.
 
-## Feedback enkodera LCD (0.6.3)
+## Feedback enkodera LCD (0.6.4)
 
-Ekran **1xDial** pokazuje feedback dowolnego enkodera MasterHUB. Akcja na pokrętle LCD
-korzysta z jego ekranu, a akcja na **każdym z trzech knobów i obu rollerów** trafia
-na podłączone LCD. Każde urządzenie i pozycja enkodera mają osobną pamięć feedbacku.
-Ostatnio obracany enkoder wybiera źródło obrazu; spóźniona odpowiedź innego enkodera
-nie nadpisuje jego wartości.
+Źródłem feedbacku może być pokrętło LCD, każdy z trzech knobów lub oba rollery.
+Pamięć jest osobna dla urządzenia i pozycji. Ostatnio obracany enkoder wybiera źródło
+wspólnego ekranu; odświeżenia profilu bez obrotu zachowują zegar.
 
-Standardowy biały pasek **`$B1`** jest zamieniany na okrągły wskaźnik **240×240**.
-Procent i tytuł są wycinane z oryginalnego obrazu, a inne układy zachowują proporcje.
-Pusta klatka `$B1` po resecie układu jest pomijana do nadejścia właściwej wartości.
-Odświeżenia profilu bez obrotu aktualizują pamięć bez włączania nakładki.
-Po około **1,5 s** wraca zegar albo najnowszy obraz tła. Na oczekiwaną odpowiedź HA
-plugin czeka do **5 s** od obrotu; odświeżenie zakończonej interakcji nie otwiera
-ponownie nakładki.
+Standardowe procenty **0–100% z `$B1`** są rozpoznawane z oryginalnego napisu
+i rysowane lokalnie w **240×240**, tą samą czcionką systemową co głośność.
+Liczba pochodzi z potwierdzonego obrazu HA, niezależnie od długości paska.
+Niepewne i niestandardowe napisy zachowują oryginalny obraz. Tytuł jest zachowany
+w rozmiarze oryginalnych pikseli, bez powiększania. **Obrót nie przewiduje wartości.**
 
-Jeden worker LCD wysyła feedback, zegar, obrazy klawisza i GIF. Wybiera najnowszą
-klatkę, sprawdza rewizję po przejęciu blokady HID i ponawia nieudane zapisy.
-**Jedna potwierdzona wartość to jedna klatka**, bez interpolacji pierścienia.
-Zmniejsza to ruch USB i usuwa poziomy pośrednie. Przy wolnym USB oczekuje najnowsza
-aktualizacja, bez narastającej kolejki starych obrazów.
+Osobny dekoder przygotowuje najnowszy JPEG dla każdego enkodera podczas pracy HID.
+Identyczny widok wykorzystuje gotowy obraz. Worker LCD nie czeka już dodatkowych
+8 ms, a geometria pierścienia jest w pamięci. Zoptymalizowany baseline JPEG 4:4:4
+z jakością 80 zmniejsza ruch USB. Głośność i zegar zachowują swój dotychczasowy
+encoder JPEG. Dodano `jpeg-encoder` w czystym Rust, bez bibliotek systemowych.
 
-Zachowaj krok HA **±5%**, feedback **`$B1`** oraz **Tick bucket size = 50 ms**,
-przypisując akcję do dowolnego enkodera pokrętła, knoba lub rollera. **Zegar** zostaje
-na klawiszu modułu LCD. MasterHUB przekazuje pojedynczy skok obrotu jako jeden tick
-i pokazuje procent otrzymany z HA. Domyślny szablon HA ucina procent jasności;
-[instrukcja konfiguracji](docs/ha-lcd-feedback.md) zawiera także szablon wyświetlania
-zaokrąglony do 5%, jeśli taki ma być widoczny krok.
+Przypisz HA do dowolnego enkodera, zachowaj **±5%**, **`$B1`** i **Tick bucket size
+= 50 ms**; **Zegar** zostaje na klawiszu LCD. Liczba na ekranie jest tą otrzymaną
+z HA. [Instrukcja konfiguracji i pomiarów](docs/ha-lcd-feedback.md) opisuje zaokrąglenia
+HA oraz nowe pomiary odbioru feedbacku, przygotowania, blokady writera i transferu
+HID w `masterhub.log`.
 
-Czas zapisu USB i rzeczywisty feedback HA wymagają sprawdzenia na fizycznym urządzeniu.
+Szybsze renderowanie lokalne nie usuwa oczekiwania na potwierdzoną odpowiedź HA.
+Czas USB i zachowanie fizycznego LCD wymagają sprawdzenia na urządzeniu.
 
 ## Instalacja
 
@@ -126,7 +122,7 @@ jest obsługiwany – plugin uruchamia programy systemowe przez `flatpak-spawn -
 
 ## Budowanie
 
-Wymaga [Rusta](https://rustup.rs) (1.85+).
+Wymaga [Rusta](https://rustup.rs) (1.89+).
 
 | System | Polecenie | Wynik |
 |---|---|---|

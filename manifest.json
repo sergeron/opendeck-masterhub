@@ -2,7 +2,7 @@
   "Name": "Cooler Master MasterHUB",
   "Description": "Unofficial device support for Cooler Master MasterHUB modules (15xKey, 3xKnob, 2xRoller, 1xDial, 5xFader), with lighting, volume, animated GIF, hardware sensor and clock actions",
   "Author": "MasterHUB community",
-  "Version": "0.6.3",
+  "Version": "0.6.4",
   "PluginUUID": "io.github.opendeck-masterhub",
   "CodePathWin": "opendeck-masterhub.exe",
   "Icon": "icon",
