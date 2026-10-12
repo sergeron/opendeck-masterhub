@@ -46,10 +46,10 @@ Usunięto dodatkowe oczekiwanie 8 ms przed zapisem. Maksymalna częstotliwość 
 zapisów pozostaje ograniczona odstępem 33 ms. Geometria pierścienia jest obliczana
 raz i ponownie wykorzystywana. Nieudana klatka jest ponawiana po 100 ms.
 
-Feedback używa **baseline JPEG 4:4:4, jakość 80, optymalizowane tablice Huffmana**.
-Dodano jedną zależność `jpeg-encoder` 0.7.1 w czystym Rust, bez bibliotek systemowych.
-Nie używa się progresywnego JPEG ani kodowania 4:2:0. Głośność i zegar zachowują
-swój dotychczasowy encoder jakości 95.
+Feedback używa tego samego kodera JPEG co zegar i głośność, z jakością 80 (zegar
+i głośność: 95). Wcześniej użyty `jpeg-encoder` (4:4:4, zoptymalizowane tablice
+Huffmana) dawał mniejsze pliki, ale dekoder pokrętła ich nie obsługuje – rysował kilka
+linii śmieci i zostawiał poprzedni obraz (sprawdzone na sprzęcie).
 
 ## Moduły i konfiguracja
 

@@ -40,7 +40,6 @@ FILES = {
     # Wzorce cyfr feedbacku enkoderów (osadzone w programie) – licencje ich źródeł.
     "licenses/feedback-OFL.txt": ROOT / "assets" / "feedback" / "OFL.txt",
     "licenses/feedback-renderer-MIT.txt": ROOT / "assets" / "feedback" / "renderer-LICENSE.txt",
-    "licenses/jpeg-encoder-MIT.txt": ROOT / "assets" / "feedback" / "jpeg-encoder-LICENSE-MIT.txt",
 }
 
 # Plik z build-windows.sh (budowanie na Linuksie) ma pierwszeństwo przed natywnym.
