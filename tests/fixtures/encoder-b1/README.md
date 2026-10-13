@@ -4,7 +4,7 @@ Te obrazy JPEG 200×100 generuje renderer używany przez OpenDeck:
 - renderer: https://github.com/FrostyCoolSlug/streamdeck-strip-render/tree/dd71a18a232e9bfdad9a32f294765c01b0d416aa
 
 Generator wywołuje `streamdeck_strip_render::render_to_image` na tym układzie,
-ustawiając `title = "Pokój Seba"`, `value = "<procent>%"` oraz `indicator.value = procent`.
+ustawiając przykładowy tytuł encji, `value = "<procent>%"` oraz `indicator.value = procent`.
 Ikona w [16,40,48,48] jest żółtym kołem (RGB 255,210,50, promień 14, środek 24,20).
 Obraz jest zapisywany przez `DynamicImage::write_to(..., ImageFormat::Jpeg)`, tak samo
 jak feedback wysyłany do pluginu urządzenia w OpenDecku.

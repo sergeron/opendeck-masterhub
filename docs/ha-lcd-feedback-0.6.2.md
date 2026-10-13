@@ -2,7 +2,7 @@
 
 ## Cel i zakres
 
-Obrót enkodera LCD steruje `light.pokoj_seba` przez istniejący plugin Home Assistant,
+Obrót enkodera LCD steruje wybraną lampą przez istniejący plugin Home Assistant,
 z krokiem ±5%. LCD pokazuje chwilowo okrągły wskaźnik jasności, a następnie wraca do
 zegara. Odświeżanie profilu lub edycja innego panelu nie powinny samodzielnie włączać
 nakładki.
@@ -150,7 +150,7 @@ cargo run --locked --release --example feedback_preview -- \
 
 ## 6. Konfiguracja HA i zegara
 
-- Encodera LCD przypisz do istniejącej akcji HA sterującej `light.pokoj_seba`.
+- Encodera LCD przypisz do istniejącej akcji HA sterującej wybraną lampą.
 - Ustaw krok jasności ±5% i feedback `$B1`.
 - Zegar przypisz do klawisza tego samego modułu LCD.
 - W pluginie HA ustawiono **Tick bucket size = 50 ms** zamiast 300 ms.

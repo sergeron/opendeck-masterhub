@@ -47,7 +47,11 @@ przejmują ekranu, więc zegar zostaje. Standardowe wartości **0–100%** są r
 w **240×240**; liczba pochodzi z drugiego pluginu, obrót jej nie przewiduje. Po 1,5 s bez zmian
 ekran wraca do zegara / obrazu klawisza.
 
-Dla Home Assistanta: zostaw **±5%**, **`$B1`** i **Tick bucket size = 50 ms**.
+Dla Home Assistanta: zostaw **±5%** i **`$B1`**. Jeśli przy obrocie w jednym kierunku
+lampa na przemian rozjaśnia się i przyciemnia, zastosuj
+[skrypt z kolejką i instrukcję konfiguracji](docs/ha-light-rotation.md). Przykład używa
+**Tick multiplier = 1** i **Tick bucket size = 100 ms**; identyfikatory lampy i skryptu
+dopasuj do swojej instancji HA.
 [Instrukcja konfiguracji i pomiarów](docs/ha-lcd-feedback.md) opisuje zaokrąglenia HA oraz
 pomiary w `masterhub.log`.
 

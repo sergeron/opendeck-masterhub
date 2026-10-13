@@ -225,7 +225,9 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
         if STARTED.set(()).is_ok() {
             let (tx, rx) = unbounded_channel();
             tokio::spawn(dispatcher(rx));
-            tokio::spawn(volume_poller());
+            tokio::spawn(update_poller("Głośność", volume_updates));
+            tokio::spawn(update_poller("Zegar", clock_updates));
+            tokio::spawn(update_poller("Czujniki", sensor_updates));
             thread::spawn(move || watcher(tx));
             log::info!("Plugin MasterHUB {} gotowy", env!("CARGO_PKG_VERSION"));
         }
@@ -392,25 +394,57 @@ async fn sync_sensors(out: &mut OutboundEventManager, force: bool) -> EventHandl
     Ok(())
 }
 
-/// Co sekundę odświeża głośność (żeby było widać zmiany spoza MasterHUB-a) i czujniki.
-async fn volume_poller() {
+enum ScreenUpdate {
+    Title(String, String),
+    Image(String, String),
+}
+
+fn volume_updates() -> Vec<ScreenUpdate> {
+    actions::volume_titles(false).into_iter().map(|(context, title)| ScreenUpdate::Title(context, title)).collect()
+}
+
+fn clock_updates() -> Vec<ScreenUpdate> {
+    actions::clock_updates().into_iter().map(|(context, image)| ScreenUpdate::Image(context, image)).collect()
+}
+
+fn sensor_updates() -> Vec<ScreenUpdate> {
+    if !actions::sensors_active() {
+        return vec![];
+    }
+    let mut updates = vec![];
+    for (context, title, icon) in actions::sensor_updates(false) {
+        if let Some(icon) = icon {
+            updates.push(ScreenUpdate::Image(context.clone(), sensor_icon_url(icon)));
+        }
+        if let Some(title) = title {
+            updates.push(ScreenUpdate::Title(context, title));
+        }
+    }
+    updates
+}
+
+/// Odczyt audio/czujników i renderowanie nie zajmują blokady wyjścia do OpenDecka.
+/// Blokujemy ją tylko na wysłanie jednej gotowej aktualizacji, aby obrót mógł
+/// przejść również w trakcie wolnego odczytu lub między aktualizacjami panelu.
+async fn prepare_and_send_updates(collect: impl FnOnce() -> Vec<ScreenUpdate> + Send + 'static) -> EventHandlerResult {
+    let updates = blocking(collect).await?;
+    for update in updates {
+        let mut lock = OUTBOUND_EVENT_MANAGER.lock().await;
+        let Some(out) = lock.as_mut() else { return Ok(()) };
+        match update {
+            ScreenUpdate::Title(context, title) => out.set_title(context, Some(title), None).await?,
+            ScreenUpdate::Image(context, image) => out.set_image(context, Some(image), None).await?,
+        }
+    }
+    Ok(())
+}
+
+/// Każde źródło ma własny poller: wolny czujnik nie opóźnia zegara ani audio.
+async fn update_poller(name: &'static str, collect: fn() -> Vec<ScreenUpdate>) {
     loop {
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let mut lock = OUTBOUND_EVENT_MANAGER.lock().await;
-        if let Some(out) = lock.as_mut() {
-            if let Err(e) = sync_volume(out, false).await {
-                log::warn!("Odświeżanie głośności: {e}");
-            }
-            for (context, image) in actions::clock_updates() {
-                if let Err(e) = out.set_image(context, Some(image), None).await {
-                    log::warn!("Zegar: {e}");
-                }
-            }
-            if actions::sensors_active() {
-                if let Err(e) = sync_sensors(out, false).await {
-                    log::warn!("Odświeżanie czujników: {e}");
-                }
-            }
+        if let Err(e) = prepare_and_send_updates(collect).await {
+            log::warn!("{name}: odświeżanie: {e}");
         }
     }
 }
@@ -613,4 +647,28 @@ async fn main() {
         }
     }
     log::info!("Koniec pracy pluginu");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[tokio::test]
+    async fn slow_background_read_keeps_opendeck_output_available_for_encoder_events() {
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let poller = tokio::spawn(prepare_and_send_updates(move || {
+            let _ = entered_tx.send(());
+            release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            vec![]
+        }));
+        tokio::time::timeout(Duration::from_secs(2), entered_rx).await.unwrap().unwrap();
+        let available = tokio::time::timeout(Duration::from_millis(100), OUTBOUND_EVENT_MANAGER.lock()).await;
+        let acquired = available.is_ok();
+        drop(available);
+        release_tx.send(()).unwrap();
+        poller.await.unwrap().unwrap();
+        assert!(acquired, "odczyt czujników/audio nie może zatrzymać przekazywania obrotu do OpenDecka");
+    }
 }

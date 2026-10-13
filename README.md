@@ -47,7 +47,16 @@ over the screen, so the clock stays put. Standard **0–100%** values are redraw
 **240×240**; the number is the one confirmed by the other plugin, turning never predicts it.
 After 1.5 s without changes the screen returns to the clock / key image.
 
-For Home Assistant: keep **±5%**, **`$B1`** and **Tick bucket size = 50 ms**. The
+Confirmed encoder feedback goes to the free LCD writer immediately, without the 33 ms spacing
+used for background and volume images. Audio, clock and sensor polling run independently;
+their reads and rendering leave the OpenDeck output available for encoder events. JPEG quality
+and the sharp 240×240 text stay unchanged. Waiting for HA and an ongoing USB transfer still
+contributes to the response time.
+
+For Home Assistant: keep **±5%** and **`$B1`**. If the actual light alternates brighter
+and dimmer while turning in one direction, use the
+[serialized light script and configuration](docs/ha-light-rotation.md); its preset uses
+**Tick multiplier = 1** and **Tick bucket size = 100 ms**. The
 [configuration and timing guide](docs/ha-lcd-feedback.md) explains HA's percentage rounding and
 the `masterhub.log` measurements.
 

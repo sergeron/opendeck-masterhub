@@ -1,4 +1,4 @@
-# Feedback Home Assistant na LCD MasterHUB — 0.6.4
+# Feedback Home Assistant na LCD MasterHUB — 0.7.2
 
 Procent standardowego `$B1` jest rysowany lokalnie w 240×240 tą samą czcionką,
 co głośność. Obie ścieżki wysyłają JPEG; LCD nie otrzymuje osobnej komendy tekstowej.
@@ -26,7 +26,8 @@ Linux: DejaVu/Noto/Liberation). Tytuł jest zachowany jako obraz bez powiększan
 Brak czcionki systemowej również powoduje zachowanie oryginalnego tekstu.
 
 Puste pole wartości po `setFeedbackLayout` nadal jest pomijane do nadejścia
-właściwego `setFeedback`. Inne układy są dopasowywane z zachowaniem proporcji.
+właściwego `setFeedback`. Nakładkę przejmują tylko rozpoznane paski `$B1`;
+zwykłe ikony enkodera nie zasłaniają zegara.
 Pochodzenie, licencje i generator atlasu: [assets/feedback](../assets/feedback/README.md).
 
 ## Kolejka i zapis ekranu
@@ -42,9 +43,19 @@ unieważnia również trwającą konwersję; stary wynik nie wraca do nowego prz
 Nie tworzy się kolejka nieaktualnych procentów. Identyczny wynik wizualny nie jest
 ponownie wysyłany, nawet jeśli JPEG wejściowy lub niewyświetlana ikona się zmieniły.
 
-Usunięto dodatkowe oczekiwanie 8 ms przed zapisem. Maksymalna częstotliwość początku
-zapisów pozostaje ograniczona odstępem 33 ms. Geometria pierścienia jest obliczana
-raz i ponownie wykorzystywana. Nieudana klatka jest ponawiana po 100 ms.
+Potwierdzony feedback enkodera jest wysyłany od razu po przygotowaniu i zwolnieniu
+writera LCD. W 0.7.2 usunięto dla niego dodatkowe oczekiwanie na odstęp 33 ms od
+poprzedniego zapisu. Odstęp 33 ms nadal obowiązuje obrazy tła, głośności i odtworzenie
+zapamiętanego stanu po obrocie. Geometria pierścienia jest obliczana raz i ponownie
+wykorzystywana. Nieudana klatka jest ponawiana po 100 ms; nowa odpowiedź nie pomija
+tej przerwy po błędzie. Zapisy pełnych obrazów nadal są serializowane.
+
+Głośność, zegar i czujniki mają osobne zadania odświeżania. Odczyt audio, zapytanie do
+LibreHardwareMonitor i przygotowanie obrazów odbywają się przed przejęciem blokady
+wyjścia do OpenDecka. Blokada obejmuje tylko wysłanie pojedynczej gotowej aktualizacji.
+Dzięki temu wolny czujnik nie zatrzymuje przekazywania fizycznych obrotów do akcji HA
+ani odświeżania zegara. Okres sprawdzania tych trzech źródeł nadal wynosi sekundę;
+feedback HA jest obsługiwany na zdarzenie `setImage`.
 
 Feedback używa tego samego kodera JPEG co zegar i głośność, z jakością 80 (zegar
 i głośność: 95). Wcześniej użyty `jpeg-encoder` (4:4:4, zoptymalizowane tablice
@@ -58,7 +69,10 @@ podłączonych LCD. Pamięć jest osobna dla pary urządzenie + pozycja, a ostat
 obracany enkoder wybiera źródło wspólnego ekranu. Odświeżenie bez obrotu nie otwiera
 nakładki. Po 1,5 s wraca zegar; na oczekiwaną odpowiedź plugin czeka do 5 s.
 
-Zachowaj akcję HA z krokiem ±5%, feedback `$B1` i **Tick bucket size = 50 ms**.
+Zachowaj akcję HA z krokiem ±5% i feedback `$B1`. Jeśli przy szybkich obrotach
+migocze sama lampa, zastosuj [kolejkę poleceń po stronie HA](ha-light-rotation.md)
+zamiast wywołań liczących cel ze stanu encji dla każdego impulsu. Konfiguracja
+skryptu używa **Tick multiplier = 1** i **Tick bucket size = 100 ms**.
 Zegar przypisz do klawisza LCD. Kod OpenDecka oraz pluginu HA nie jest zmieniany.
 
 Domyślny [szablon HA dla światła](https://github.com/cgiesche/streamdeck-homeassistant/blob/7322fe0eac5279b3a09dcd0f4026c7b43df0636c/public/config/default-display-config.yml)
@@ -90,7 +104,7 @@ użytkownika: w tym repozytorium nie ma instalacji ani ustawień tej zewnętrzne
 ## Jak sprawdzić opóźnienie
 
 Po ponownym uruchomieniu OpenDecka `masterhub.log` powinien zawierać
-`Plugin MasterHUB 0.6.4 gotowy`. Pozwala to sprawdzić również wersję faktycznie
+`Plugin MasterHUB 0.7.2 gotowy`. Pozwala to sprawdzić również wersję faktycznie
 uruchomionego EXE, a nie tylko manifestu.
 
 Na początku interakcji pojawiają się dwa pomiary:
@@ -118,26 +132,29 @@ sh build-linux.sh
 python3 package.py
 ```
 
-Zainstaluj `dist/io.github.opendeck-masterhub-0.6.4.streamDeckPlugin` przez
+Zainstaluj `dist/io.github.opendeck-masterhub-pl.streamDeckPlugin` (wersja polska)
+albo `dist/io.github.opendeck-masterhub-en.streamDeckPlugin` (angielska) przez
 **Plugins → Install from file**, następnie uruchom ponownie OpenDeck.
-Źródła: `dist/opendeck-masterhub-0.6.4-source.zip`.
 
 Podgląd faktycznej kompresji feedbacku, bez urządzenia:
 
 ```sh
 cargo run --locked --release --example feedback_preview -- \
-  tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55-0.6.4.png
+  tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55-0.7.2.png
 ```
 
 ## Weryfikacja i ograniczenia
 
-43 testy obejmują między innymi wszystkie 0–100% przy JPEG 75/95, zachowanie liczby
+48 testów obejmuje między innymi wszystkie 0–100% przy JPEG 75/95, zachowanie liczby
 przy innym pasku, odrzucenie wartości ujemnych/spoza zakresu/zer wiodących,
 przygotowanie podczas blokady HID, wybór najnowszej klatki, brak przewidywania
 po obrocie, deduplikację wyglądu, usunięcie starego wyniku po zmianie profilu,
-obsługę knobów/rollerów oraz poprawne dekodowanie zoptymalizowanego JPEG.
+obsługę knobów/rollerów oraz poprawne dekodowanie JPEG. Nowe testy sprawdzają
+natychmiastowy termin zapisu potwierdzonej odpowiedzi, zachowanie przerwy po błędzie
+USB i dostępność wyjścia do OpenDecka w trakcie zablokowanego odczytu w tle.
 
-Próbka 55% w tym środowisku: **8836 → 8245 B**, czyli **29 → 27 raportów HID**.
-To pomiar wielkości klatki, nie obietnica takiego samego zysku czasu USB.
+Próbka 55% w tym środowisku: **8945 B / 29 raportów HID**, konwersja i kodowanie
+około **1,5 ms** po inicjalizacji (średnia ze 100 klatek). Koder i jakość JPEG nie
+zostały zmienione w 0.7.2; poprawka skraca oczekiwanie w kolejce oraz blokowanie zdarzeń.
 Ostrość sprawdzono na gotowych obrazach; rzeczywista latencja HA, USB i fizycznego
 LCD nadal wymaga pomiaru na urządzeniu.

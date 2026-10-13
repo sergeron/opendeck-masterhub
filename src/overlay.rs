@@ -14,6 +14,8 @@ use crate::{MODULES, hub, hub::Kind, images, with_writer};
 const SHOW_FOR: Duration = Duration::from_millis(1500);
 // Odpowiedź HA może nadejść po zniknięciu poprzedniej nakładki.
 const FEEDBACK_WAIT_FOR: Duration = Duration::from_secs(5);
+// Odstęp dla tła i własnych obrazów. Potwierdzona odpowiedź enkodera ma
+// pierwszeństwo: trafia do wolnego HID od razu, bez czekania na ten termin.
 const FRAME_EVERY: Duration = Duration::from_millis(33);
 const RETRY_AFTER: Duration = Duration::from_millis(100);
 
@@ -177,6 +179,11 @@ impl Display {
                 !self.active(now) && self.background_revision == revision && self.revision == overlay_revision
             }
         }
+    }
+
+    fn send_due(&self, token: Token, now: Instant, next_send: Instant, retry_at: Option<Instant>) -> Instant {
+        let due = if matches!(token, Token::Overlay(_)) && self.reply_turn.is_some() { now } else { next_send };
+        retry_at.map_or(due, |retry| due.max(retry))
     }
 
     fn queue(&mut self, owner: Owner, frame: Frame, now: Instant) {
@@ -609,6 +616,7 @@ impl Shared {
 
 fn worker(shared: &Shared, device: &str, mut write: impl FnMut(&[u8], Token) -> Written) {
     let mut next_send = Instant::now();
+    let mut retry_at = None;
     let mut prepared: Option<(Token, Arc<[u8]>)> = None;
     let mut background_failures = 0;
     loop {
@@ -634,10 +642,7 @@ fn worker(shared: &Shared, device: &str, mut write: impl FnMut(&[u8], Token) -> 
                     return;
                 };
                 if let Some(work) = work {
-                    let due = match work.1 {
-                        Token::Overlay(_) => next_send,
-                        Token::Background { .. } => next_send,
-                    };
+                    let due = display.send_due(work.1, now, next_send, retry_at);
                     if now >= due {
                         let mut queued_at = display.pending_since.unwrap_or(now);
                         if let Frame::ReadyFeedback(ready) = &work.0 {
@@ -704,6 +709,7 @@ fn worker(shared: &Shared, device: &str, mut write: impl FnMut(&[u8], Token) -> 
         match outcome {
             Written::Sent => {
                 next_send = started + FRAME_EVERY;
+                retry_at = None;
                 background_failures = 0;
                 match token {
                     Token::Overlay(revision) => {
@@ -739,7 +745,7 @@ fn worker(shared: &Shared, device: &str, mut write: impl FnMut(&[u8], Token) -> 
             Written::Failed => {
                 // Nie oznaczamy klatki jako wysłanej. Taki sam feedback nadal czeka
                 // i jest ponawiany bez następnego obrotu lub zmiany procentu.
-                next_send = Instant::now() + RETRY_AFTER;
+                retry_at = Some(Instant::now() + RETRY_AFTER);
                 if matches!(token, Token::Background { .. }) {
                     background_failures += 1;
                     if background_failures >= 3 && display.current(token, Instant::now()) {
@@ -1015,6 +1021,35 @@ mod tests {
         }
         assert_eq!(sent.last().unwrap(), b"clock");
         assert!(!shared.state.lock().unwrap().displays["lcd"].running);
+    }
+
+    #[test]
+    fn confirmed_reply_bypasses_the_frame_interval_but_cached_images_do_not() {
+        let encoder = Encoder::new("knobs", 1);
+        let now = Instant::now();
+        let next_send = now + FRAME_EVERY;
+        let mut registry = Registry::default();
+        registry.feedback(encoder.clone(), fifty(), now);
+        registry.twist(encoder.clone(), vec!["lcd".into()], now);
+        let display = &registry.displays["lcd"];
+        assert_eq!(display.send_due(Token::Overlay(display.revision), now, next_send, None), next_send);
+
+        registry.feedback(encoder, fifty_five(), now);
+        let display = &registry.displays["lcd"];
+        assert_eq!(display.send_due(Token::Overlay(display.revision), now, next_send, None), now);
+        let background = Token::Background { revision: display.background_revision, overlay_revision: display.revision };
+        assert_eq!(display.send_due(background, now, next_send, None), next_send);
+    }
+
+    #[test]
+    fn confirmed_reply_respects_usb_error_backoff() {
+        let encoder = Encoder::new("rollers", 0);
+        let shared = shared_with_feedback(&encoder, fifty_five());
+        let registry = shared.state.lock().unwrap();
+        let display = &registry.displays["lcd"];
+        let now = Instant::now();
+        let retry_at = now + RETRY_AFTER;
+        assert_eq!(display.send_due(Token::Overlay(display.revision), now, now + FRAME_EVERY, Some(retry_at)), retry_at);
     }
 
     #[test]
