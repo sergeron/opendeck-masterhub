@@ -36,6 +36,25 @@ Akcje w kategorii **MasterHUB**:
   Na Windows także **FPS i czas klatki aktywnego okna** z RivaTuner Statistics Server
   (np. razem z MSI Afterburnerem) – działa bez LibreHardwareMonitor.
 
+## Obraz z enkoderów na ekranie pokrętła
+
+Pluginy ze wsparciem Stream Decka+, które rysują pasek na wyświetlaczu nad pokrętłem (np. jasność
+światła z [Home Assistanta](https://github.com/cgiesche/streamdeck-homeassistant), układ **`$B1`**),
+mogą pokazywać go na okrągłym ekranie pokrętła MasterHUB-a, gdy kręcisz tym enkoderem – samym
+pokrętłem, dowolną gałką albo rolką. Pokazywane są tylko rozpoznane układy z paskiem; enkodery
+ze zwykłą ikoną i enkodery z akcją „Głośność” tego pluginu (ma własny wskaźnik) nigdy nie
+przejmują ekranu, więc zegar zostaje. Standardowe wartości **0–100%** są rysowane ostro
+w **240×240**; liczba pochodzi z drugiego pluginu, obrót jej nie przewiduje. Po 1,5 s bez zmian
+ekran wraca do zegara / obrazu klawisza.
+
+Dla Home Assistanta: zostaw **±5%** i **`$B1`**. Jeśli przy obrocie w jednym kierunku
+lampa na przemian rozjaśnia się i przyciemnia, zastosuj
+[skrypt z kolejką i instrukcję konfiguracji](docs/ha-light-rotation.md). Przykład używa
+**Tick multiplier = 1** i **Tick bucket size = 100 ms**; identyfikatory lampy i skryptu
+dopasuj do swojej instancji HA.
+[Instrukcja konfiguracji i pomiarów](docs/ha-lcd-feedback.md) opisuje zaokrąglenia HA oraz
+pomiary w `masterhub.log`.
+
 ## Języki
 
 Plugin mówi **po polsku i po angielsku**: panele ustawień, napisy rysowane na ekranach
@@ -106,7 +125,7 @@ jest obsługiwany – plugin uruchamia programy systemowe przez `flatpak-spawn -
 
 ## Budowanie
 
-Wymaga [Rusta](https://rustup.rs) (1.85+) i Pythona 3 do pakowania. Komentarze w kodzie są po polsku.
+Wymaga [Rusta](https://rustup.rs) (1.89+) i Pythona 3 do pakowania. Komentarze w kodzie są po polsku.
 
 | System | Polecenie | Wynik |
 |---|---|---|
@@ -118,6 +137,12 @@ Wymaga [Rusta](https://rustup.rs) (1.85+) i Pythona 3 do pakowania. Komentarze w
 (`--lang en` / `--lang pl` – tylko jedna). Na Windows `install.ps1` buduje i instaluje od razu
 do OpenDecka (zamknij najpierw OpenDecka); nazwy akcji według języka Windows, `-Lang en` /
 `-Lang pl` to zmienia. Inne systemy: `python3 package.py --install --lang pl`.
+
+Build dla Windows na Linuksie (Debian / Ubuntu): zainstaluj `gcc-mingw-w64-x86-64`, uruchom
+`rustup target add x86_64-pc-windows-gnu` i `sh build-windows.sh` – wynik trafia do
+`dist/bin/opendeck-masterhub.exe`, który `package.py` bierze przed `target/release`.
+Przed budowaniem uruchom `cargo test --locked`. Podgląd obrazu z enkodera bez urządzenia:
+`cargo run --release --example feedback_preview -- tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png`.
 GitHub Actions buduje wszystkie trzy systemy przy każdym pushu; tag `v*` publikuje wydanie.
 
 Tłumaczenia: teksty paneli są w HTML (po polsku), angielskie w atrybutach `data-en`

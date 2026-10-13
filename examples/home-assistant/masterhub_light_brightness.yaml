@@ -1,0 +1,62 @@
+# Wklej cały plik do edytora YAML nowego skryptu w Home Assistant.
+# Dla scripts.yaml umieść tę zawartość pod kluczem masterhub_light_brightness:.
+# Zastąp light.example w variables.light_entity identyfikatorem własnej lampy.
+# Obrót wywołuje script.turn_on z variables.ticks; wyświetlana encja pozostaje światłem.
+alias: MasterHUB Light Brightness
+description: >-
+  Kolejkuje obroty i czeka na stan poprzedniej zmiany. Jeden tick zmienia jasność
+  o 5 punktów procentowych, w zakresie 1–100%, bez przejścia czasowego lampy.
+mode: queued
+max: 100
+variables:
+  light_entity: light.example
+fields:
+  ticks:
+    name: Kroki enkodera
+    description: Dodatnie rozjaśniają, ujemne przyciemniają. Tick multiplier = 1.
+    required: true
+    selector:
+      number:
+        min: -100
+        max: 100
+        step: 1
+        mode: box
+sequence:
+  - condition: template
+    value_template: >-
+      {{ (ticks | default(0) | int(0)) != 0
+         and states(light_entity) not in ['unknown', 'unavailable'] }}
+  # Te zmienne są obliczane dopiero po wejściu danego wywołania do kolejki.
+  - variables:
+      target_pct: >-
+        {%- set current = (state_attr(light_entity, 'brightness') | int(0)) / 255 * 100 -%}
+        {{ [[current + 5 * (ticks | int(0)), 1] | max, 100] | min | round(0) | int }}
+      target_raw: "{{ (target_pct | int / 100 * 255) | round(0) | int }}"
+  - if:
+      - condition: template
+        value_template: >-
+          {{ is_state(light_entity, 'on')
+             and ((state_attr(light_entity, 'brightness') | int(0)) - (target_raw | int)) | abs <= 2 }}
+    then:
+      - stop: Jasność jest już w docelowym zakresie.
+  - action: light.turn_on
+    target:
+      entity_id: "{{ light_entity }}"
+    data:
+      brightness_pct: "{{ target_pct | int }}"
+      transition: 0
+  # Kolejne wywołanie zaczyna obliczać jasność po potwierdzeniu poprzedniego celu.
+  - wait_template: >-
+      {{ is_state(light_entity, 'on')
+         and ((state_attr(light_entity, 'brightness') | int(0)) - (target_raw | int)) | abs <= 2 }}
+    timeout: "00:00:03"
+    continue_on_timeout: true
+  - if:
+      - condition: template
+        value_template: "{{ not wait.completed }}"
+    then:
+      # Brak potwierdzenia nie może uruchomić następnej komendy ze starym stanem.
+      # turn_off skryptu anuluje również pozostałe oczekujące wywołania.
+      - action: script.turn_off
+        target:
+          entity_id: "{{ this.entity_id }}"

@@ -36,6 +36,30 @@ Actions in the **MasterHUB** category:
   On Windows also **FPS and frame time of the focused window** from RivaTuner Statistics Server
   (e.g. bundled with MSI Afterburner) – works without LibreHardwareMonitor.
 
+## Encoder feedback on the dial screen
+
+Stream Deck+ plugins that draw a bar on the touch strip above an encoder (e.g. the
+[Home Assistant](https://github.com/cgiesche/streamdeck-homeassistant) light brightness, layout
+**`$B1`**) can show it on the MasterHUB dial's round screen while you turn that encoder – on the
+dial itself, any knob or any roller. Only recognized bar layouts are shown; encoders with plain
+icons and encoders running this plugin's own "Volume" action (which has its own gauge) never take
+over the screen, so the clock stays put. Standard **0–100%** values are redrawn sharply at
+**240×240**; the number is the one confirmed by the other plugin, turning never predicts it.
+After 1.5 s without changes the screen returns to the clock / key image.
+
+Confirmed encoder feedback goes to the free LCD writer immediately, without the 33 ms spacing
+used for background and volume images. Audio, clock and sensor polling run independently;
+their reads and rendering leave the OpenDeck output available for encoder events. JPEG quality
+and the sharp 240×240 text stay unchanged. Waiting for HA and an ongoing USB transfer still
+contributes to the response time.
+
+For Home Assistant: keep **±5%** and **`$B1`**. If the actual light alternates brighter
+and dimmer while turning in one direction, use the
+[serialized light script and configuration](docs/ha-light-rotation.md); its preset uses
+**Tick multiplier = 1** and **Tick bucket size = 100 ms**. The
+[configuration and timing guide](docs/ha-lcd-feedback.md) explains HA's percentage rounding and
+the `masterhub.log` measurements.
+
 ## Languages
 
 The plugin speaks **English and Polish**: settings panels, texts drawn on the screens
@@ -106,7 +130,7 @@ is supported – the plugin runs host programs through `flatpak-spawn --host`.
 
 ## Building
 
-Requires [Rust](https://rustup.rs) (1.85+) and Python 3 for packaging. Code comments are in Polish.
+Requires [Rust](https://rustup.rs) (1.89+) and Python 3 for packaging. Code comments are in Polish.
 
 | System | Command | Output |
 |---|---|---|
@@ -124,6 +148,12 @@ GitHub Actions builds all three systems on every push; pushing a `v*` tag publis
 Translations: panel texts are in the HTML (Polish) with English in `data-en` attributes
 (`pi/i18n.js`), texts drawn by the plugin use `i18n::tr("polski", "English")`, and the Polish
 action names live in `pl.json` (Stream Deck localization format).
+
+For a Windows build on Linux (Debian / Ubuntu) install `gcc-mingw-w64-x86-64`, run
+`rustup target add x86_64-pc-windows-gnu` and `sh build-windows.sh` – the result goes to
+`dist/bin/opendeck-masterhub.exe`, which `package.py` prefers over `target/release`.
+Run `cargo test --locked` before building. A feedback preview without hardware:
+`cargo run --release --example feedback_preview -- tests/fixtures/encoder-b1/b1-55.jpg dist/feedback-55.png`.
 
 `examples/` contains small hardware and rendering test tools (`cargo run --example …`).
 

@@ -969,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "opendeck-masterhub"
-version = "0.7.0"
+version = "0.7.2"
 dependencies = [
  "ab_glyph",
  "anyhow",

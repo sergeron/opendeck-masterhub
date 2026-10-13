@@ -68,10 +68,7 @@ impl Player {
 static PLAYERS: LazyLock<Mutex<HashMap<(String, u8), Player>>> = LazyLock::new(Default::default);
 
 fn gif_dir() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("gifs")))
-        .unwrap_or_else(|| "gifs".into())
+    std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("gifs"))).unwrap_or_else(|| "gifs".into())
 }
 
 /// Zapisuje GIF przesłany z panelu (data URL) w katalogu pluginu i zwraca ścieżkę.
@@ -89,9 +86,7 @@ pub fn save_upload(data_url: &str) -> Result<PathBuf, String> {
 
 fn tiles(img: &DynamicImage, layout: Layout) -> Result<Vec<Vec<u8>>, String> {
     match layout {
-        Layout::Single { size, cover } | Layout::Copies { size, cover, .. } => {
-            Ok(vec![images::fit_jpeg(img, size, cover, 85)?])
-        }
+        Layout::Single { size, cover } | Layout::Copies { size, cover, .. } => Ok(vec![images::fit_jpeg(img, size, cover, 85)?]),
         Layout::Grid { cols, rows, key, gap, cover } => {
             let (w, h) = (cols * key + (cols - 1) * gap, rows * key + (rows - 1) * gap);
             let canvas = if cover {
@@ -195,15 +190,16 @@ pub fn play(device: &str, kind: Kind, position: u8, path: PathBuf, layout: Layou
                     break 'outer;
                 }
                 let started = Instant::now();
-                // Nakładka na pokrętle (np. głośność) ma pierwszeństwo – klatkę pomijamy.
-                if kind == Kind::Dial && crate::overlay::active(&device) {
+                if kind == Kind::Dial {
+                    // Jeden worker LCD wybiera aktualne tło albo nakładkę. GIF nie
+                    // może nadpisać feedbacku po czekaniu na blokadę HID.
+                    crate::overlay::set_background_jpeg(&device, tiles[0].clone());
                     drop(guard);
                     thread::sleep((*delay).max(min_frame));
                     continue;
                 }
                 let ok = with_writer(&device, |dev| {
                     match (kind, layout) {
-                        (Kind::Dial, _) => hub::upload_dial_image(dev, &tiles[0])?,
                         (_, Layout::Single { .. }) => hub::upload_key_image(dev, position, &tiles[0])?,
                         (_, Layout::Grid { .. }) => {
                             for (i, tile) in tiles.iter().enumerate() {

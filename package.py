@@ -7,7 +7,8 @@ paneli / napisów (language.txt); obie mają oba języki do wyboru w ustawieniac
 - pl: nazwy i opisy z pl.json wpisane do manifestu.
 
 Pliki programu dla poszczególnych systemów:
-- Windows: target/release/opendeck-masterhub.exe   (cargo build --release)
+- Windows: dist/bin/opendeck-masterhub.exe         (build-windows.sh na Linuksie)
+           albo target/release/opendeck-masterhub.exe (cargo build --release na Windows)
 - Linux:   dist/bin/opendeck-masterhub-linux        (build-linux.sh w WSL albo na Linuksie)
 - macOS:   dist/bin/opendeck-masterhub-mac          (macos/build.sh na Macu)
 Brakujące są pomijane (z ostrzeżeniem) – plugin działa wtedy tylko na pozostałych systemach.
@@ -36,10 +37,15 @@ FILES = {
     "icon.png": ROOT / "assets" / "icon.png",
     "icon@2x.png": ROOT / "assets" / "icon@2x.png",
     "70-masterhub.rules": ROOT / "linux" / "70-masterhub.rules",
+    # Wzorce cyfr feedbacku enkoderów (osadzone w programie) – licencje ich źródeł.
+    "licenses/feedback-OFL.txt": ROOT / "assets" / "feedback" / "OFL.txt",
+    "licenses/feedback-renderer-MIT.txt": ROOT / "assets" / "feedback" / "renderer-LICENSE.txt",
 }
 
+# Plik z build-windows.sh (budowanie na Linuksie) ma pierwszeństwo przed natywnym.
+WINDOWS_EXE = ROOT / "dist" / "bin" / "opendeck-masterhub.exe"
 BINARIES = {
-    "opendeck-masterhub.exe": ROOT / "target" / "release" / "opendeck-masterhub.exe",
+    "opendeck-masterhub.exe": WINDOWS_EXE if WINDOWS_EXE.exists() else ROOT / "target" / "release" / "opendeck-masterhub.exe",
     "opendeck-masterhub-linux": ROOT / "dist" / "bin" / "opendeck-masterhub-linux",
     "opendeck-masterhub-mac": ROOT / "dist" / "bin" / "opendeck-masterhub-mac",
 }

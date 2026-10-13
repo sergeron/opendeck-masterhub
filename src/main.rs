@@ -49,6 +49,13 @@ static MODULES: LazyLock<Mutex<HashMap<String, Module>>> = LazyLock::new(Default
 static FADER_VALUES: LazyLock<Mutex<HashMap<(String, u8), u8>>> = LazyLock::new(Default::default);
 static BRIGHTNESS: AtomicU8 = AtomicU8::new(100);
 static STARTED: OnceLock<()> = OnceLock::new();
+/// Enkodery z akcjami tego pluginu (urządzenie, pozycja) – np. „Głośność” ma własny wskaźnik
+/// na LCD, więc obraz takiego enkodera nigdy nie trafia na ekran pokrętła.
+static OWN_ENCODERS: LazyLock<Mutex<HashSet<(String, u8)>>> = LazyLock::new(Default::default);
+
+fn own_encoder(device: &str, position: u8) -> bool {
+    OWN_ENCODERS.lock().unwrap().contains(&(device.to_string(), position))
+}
 
 /// Wyszukuje nowe moduły co 2 s i uruchamia dla nich wątki czytające.
 fn watcher(tx: UnboundedSender<Msg>) {
@@ -81,10 +88,7 @@ fn watcher(tx: UnboundedSender<Msg>) {
             log::info!("Podłączono {} ({id})", kind.name());
 
             open_paths.lock().unwrap().insert(path.clone());
-            MODULES
-                .lock()
-                .unwrap()
-                .insert(id.clone(), Module { kind, writer: Arc::new(Mutex::new(writer)) });
+            MODULES.lock().unwrap().insert(id.clone(), Module { kind, writer: Arc::new(Mutex::new(writer)) });
             let _ = tx.send(Msg::Register { id: id.clone(), kind });
 
             let (tx, open_paths) = (tx.clone(), open_paths.clone());
@@ -92,6 +96,7 @@ fn watcher(tx: UnboundedSender<Msg>) {
                 read_loop(reader, kind, &id, &tx);
                 log::info!("Odłączono {} ({id})", kind.name());
                 MODULES.lock().unwrap().remove(&id);
+                overlay::clear_feedback(&id, None);
                 open_paths.lock().unwrap().remove(&path);
                 let _ = tx.send(Msg::Deregister(id));
             });
@@ -110,6 +115,11 @@ fn read_loop(dev: HidDevice, kind: Kind, id: &str, tx: &UnboundedSender<Msg>) {
             Err(_) => return,
         };
         for input in decoder.decode(&buf[..n]) {
+            if let Input::EncoderTwist(position, _) = input {
+                if !own_encoder(id, position) {
+                    overlay::encoder_twist(id, position);
+                }
+            }
             if let Input::FaderValue(i, v) = input {
                 FADER_VALUES.lock().unwrap().insert((id.to_string(), i), v);
                 continue;
@@ -135,9 +145,7 @@ async fn dispatcher(mut rx: UnboundedReceiver<Msg>) {
             Msg::Deregister(id) if id.starts_with("mh-MHBS") => Ok(()),
             Msg::Register { id, kind } => {
                 let (rows, columns, encoders) = kind.layout();
-                let r = out
-                    .register_device(id.clone(), kind.name().to_string(), rows, columns, encoders, 0)
-                    .await;
+                let r = out.register_device(id.clone(), kind.name().to_string(), rows, columns, encoders, 0).await;
                 // Komendy dla modułu idą w tle: zawieszony moduł nie może blokować zgłaszania
                 // kolejnych urządzeń ani zdarzeń.
                 background(move || {
@@ -172,8 +180,7 @@ type PendingImages = HashMap<String, (HashMap<u8, Option<String>>, bool)>;
 static PENDING_IMAGES: LazyLock<Mutex<PendingImages>> = LazyLock::new(Default::default);
 
 /// Wysyła oczekujące obrazy urządzenia, aż kolejka będzie pusta.
-fn image_worker(device: String, kind: Kind) {
-    let size = if kind == Kind::Dial { hub::DIAL_IMAGE_SIZE } else { hub::KEY_IMAGE_SIZE };
+fn image_worker(device: String) {
     loop {
         let next = {
             let mut pending = PENDING_IMAGES.lock().unwrap();
@@ -187,12 +194,9 @@ fn image_worker(device: String, kind: Kind) {
             }
         };
         let Some((position, image)) = next else { continue };
-        match images::to_jpeg(image.as_deref(), size) {
+        match images::to_jpeg(image.as_deref(), hub::KEY_IMAGE_SIZE) {
             Ok(jpeg) => {
-                with_writer(&device, |dev| match kind {
-                    Kind::Dial => hub::upload_dial_image(dev, &jpeg),
-                    _ => hub::upload_key_image(dev, position, &jpeg),
-                });
+                with_writer(&device, |dev| hub::upload_key_image(dev, position, &jpeg));
             }
             Err(e) => log::error!("Nie udało się przygotować obrazka: {e}"),
         }
@@ -221,9 +225,11 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
         if STARTED.set(()).is_ok() {
             let (tx, rx) = unbounded_channel();
             tokio::spawn(dispatcher(rx));
-            tokio::spawn(volume_poller());
+            tokio::spawn(update_poller("Głośność", volume_updates));
+            tokio::spawn(update_poller("Zegar", clock_updates));
+            tokio::spawn(update_poller("Czujniki", sensor_updates));
             thread::spawn(move || watcher(tx));
-            log::info!("Plugin MasterHUB gotowy");
+            log::info!("Plugin MasterHUB {} gotowy", env!("CARGO_PKG_VERSION"));
         }
         Ok(())
     }
@@ -253,11 +259,24 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
     }
 
     async fn set_image(&self, event: SetImageEvent, _outbound: &mut OutboundEventManager) -> EventHandlerResult {
-        // Obrazki enkoderów (pasek Stream Decka+) pomijamy; ekran pokrętła pokazuje ikonę jego klawisza.
+        let Some(kind) = MODULES.lock().unwrap().get(&event.device).map(|m| m.kind) else { return Ok(()) };
+        if event.controller.is_none() && event.position.is_none() && event.image.is_none() {
+            overlay::clear_feedback(&event.device, None);
+        }
         if event.controller.as_deref() == Some("Encoder") {
+            let encoders = kind.layout().2;
+            if encoders == 0 || event.position.is_some_and(|p| p >= encoders || own_encoder(&event.device, p)) {
+                return Ok(());
+            }
+            let Some(image) = event.image.filter(|image| !image.trim().is_empty()) else {
+                overlay::clear_feedback(&event.device, event.position);
+                return Ok(());
+            };
+            // Źródłem może być dowolny enkoder; knoby i rollery korzystają z LCD
+            // podłączonych pokręteł. Stan jest przypisany do urządzenia ORAZ pozycji.
+            overlay::show_feedback(&event.device, event.position, encoders, image);
             return Ok(());
         }
-        let Some(kind) = MODULES.lock().unwrap().get(&event.device).map(|m| m.kind) else { return Ok(()) };
         let key_count = match kind {
             Kind::Keys15 => 15,
             Kind::Dial => 1,
@@ -272,11 +291,11 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
         let positions: Vec<u8> = positions.into_iter().filter(|p| !gif::is_playing(&event.device, *p)).collect();
         let image = if event.position.is_some() { event.image } else { None };
         if kind == Kind::Dial {
-            overlay::remember(&event.device, image.clone());
-            if overlay::active(&event.device) || overlay::has_direct(&event.device) {
-                // Obraz wróci po zniknięciu nakładki / ekran rysuje plugin (np. zegar).
-                return Ok(());
+            if !positions.is_empty() {
+                // Wszystkie obrazy LCD obsługuje jeden worker, także zegar i GIF.
+                overlay::remember(&event.device, image);
             }
+            return Ok(());
         }
 
         // Zapamiętujemy tylko najnowszy obraz dla każdego klawisza; przy szybkich zmianach
@@ -290,7 +309,7 @@ impl openaction::GlobalEventHandler for GlobalEventHandler {
             !std::mem::replace(running, true)
         };
         if start_worker {
-            tokio::task::spawn_blocking(move || image_worker(event.device, kind));
+            tokio::task::spawn_blocking(move || image_worker(event.device));
         }
         Ok(())
     }
@@ -375,25 +394,57 @@ async fn sync_sensors(out: &mut OutboundEventManager, force: bool) -> EventHandl
     Ok(())
 }
 
-/// Co sekundę odświeża głośność (żeby było widać zmiany spoza MasterHUB-a) i czujniki.
-async fn volume_poller() {
+enum ScreenUpdate {
+    Title(String, String),
+    Image(String, String),
+}
+
+fn volume_updates() -> Vec<ScreenUpdate> {
+    actions::volume_titles(false).into_iter().map(|(context, title)| ScreenUpdate::Title(context, title)).collect()
+}
+
+fn clock_updates() -> Vec<ScreenUpdate> {
+    actions::clock_updates().into_iter().map(|(context, image)| ScreenUpdate::Image(context, image)).collect()
+}
+
+fn sensor_updates() -> Vec<ScreenUpdate> {
+    if !actions::sensors_active() {
+        return vec![];
+    }
+    let mut updates = vec![];
+    for (context, title, icon) in actions::sensor_updates(false) {
+        if let Some(icon) = icon {
+            updates.push(ScreenUpdate::Image(context.clone(), sensor_icon_url(icon)));
+        }
+        if let Some(title) = title {
+            updates.push(ScreenUpdate::Title(context, title));
+        }
+    }
+    updates
+}
+
+/// Odczyt audio/czujników i renderowanie nie zajmują blokady wyjścia do OpenDecka.
+/// Blokujemy ją tylko na wysłanie jednej gotowej aktualizacji, aby obrót mógł
+/// przejść również w trakcie wolnego odczytu lub między aktualizacjami panelu.
+async fn prepare_and_send_updates(collect: impl FnOnce() -> Vec<ScreenUpdate> + Send + 'static) -> EventHandlerResult {
+    let updates = blocking(collect).await?;
+    for update in updates {
+        let mut lock = OUTBOUND_EVENT_MANAGER.lock().await;
+        let Some(out) = lock.as_mut() else { return Ok(()) };
+        match update {
+            ScreenUpdate::Title(context, title) => out.set_title(context, Some(title), None).await?,
+            ScreenUpdate::Image(context, image) => out.set_image(context, Some(image), None).await?,
+        }
+    }
+    Ok(())
+}
+
+/// Każde źródło ma własny poller: wolny czujnik nie opóźnia zegara ani audio.
+async fn update_poller(name: &'static str, collect: fn() -> Vec<ScreenUpdate>) {
     loop {
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let mut lock = OUTBOUND_EVENT_MANAGER.lock().await;
-        if let Some(out) = lock.as_mut() {
-            if let Err(e) = sync_volume(out, false).await {
-                log::warn!("Odświeżanie głośności: {e}");
-            }
-            for (context, image) in actions::clock_updates() {
-                if let Err(e) = out.set_image(context, Some(image), None).await {
-                    log::warn!("Zegar: {e}");
-                }
-            }
-            if actions::sensors_active() {
-                if let Err(e) = sync_sensors(out, false).await {
-                    log::warn!("Odświeżanie czujników: {e}");
-                }
-            }
+        if let Err(e) = prepare_and_send_updates(collect).await {
+            log::warn!("{name}: odświeżanie: {e}");
         }
     }
 }
@@ -415,6 +466,10 @@ async fn apply_gif(
 
 impl openaction::ActionEventHandler for ActionEventHandler {
     async fn will_appear(&self, event: AppearEvent, out: &mut OutboundEventManager) -> EventHandlerResult {
+        if event.payload.controller == "Encoder" {
+            OWN_ENCODERS.lock().unwrap().insert((event.device.clone(), event.payload.coordinates.column));
+            overlay::clear_feedback(&event.device, Some(event.payload.coordinates.column));
+        }
         let settings = event.payload.settings;
         match event.action.as_str() {
             actions::LIGHTING => {
@@ -464,6 +519,9 @@ impl openaction::ActionEventHandler for ActionEventHandler {
     }
 
     async fn will_disappear(&self, event: AppearEvent, out: &mut OutboundEventManager) -> EventHandlerResult {
+        if event.payload.controller == "Encoder" {
+            OWN_ENCODERS.lock().unwrap().remove(&(event.device.clone(), event.payload.coordinates.column));
+        }
         match event.action.as_str() {
             actions::LIGHTING => actions::lighting_disappear(&event.context),
             actions::VOLUME => actions::volume_unregister(&event.context),
@@ -558,10 +616,8 @@ impl openaction::ActionEventHandler for ActionEventHandler {
 }
 
 fn init_logging() {
-    let path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("masterhub.log")))
-        .unwrap_or_else(|| "masterhub.log".into());
+    let path =
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("masterhub.log"))).unwrap_or_else(|| "masterhub.log".into());
     let config = simplelog::Config::default();
     let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![simplelog::TermLogger::new(
         simplelog::LevelFilter::Info,
@@ -591,4 +647,28 @@ async fn main() {
         }
     }
     log::info!("Koniec pracy pluginu");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[tokio::test]
+    async fn slow_background_read_keeps_opendeck_output_available_for_encoder_events() {
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let poller = tokio::spawn(prepare_and_send_updates(move || {
+            let _ = entered_tx.send(());
+            release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            vec![]
+        }));
+        tokio::time::timeout(Duration::from_secs(2), entered_rx).await.unwrap().unwrap();
+        let available = tokio::time::timeout(Duration::from_millis(100), OUTBOUND_EVENT_MANAGER.lock()).await;
+        let acquired = available.is_ok();
+        drop(available);
+        release_tx.send(()).unwrap();
+        poller.await.unwrap().unwrap();
+        assert!(acquired, "odczyt czujników/audio nie może zatrzymać przekazywania obrotu do OpenDecka");
+    }
 }
